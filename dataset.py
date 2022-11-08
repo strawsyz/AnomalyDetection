@@ -23,6 +23,7 @@ class Normal_Loader(Dataset):
                 self.data_list = f.readlines()
             random.shuffle(self.data_list)
             self.data_list = self.data_list[:-10]
+
     def __len__(self):
         return len(self.data_list)
 

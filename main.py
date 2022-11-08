@@ -30,8 +30,8 @@ def train(epoch):
 
         optimizer.step()
         train_loss += loss.item()
-    print(model.a_memory)
-    print(model.n_memory)
+    # print(model.a_memory)
+    # print(model.n_memory)
     print('loss = {}'.format(train_loss / len(normal_train_loader)))
     scheduler.step()
 
@@ -131,9 +131,21 @@ if __name__ == '__main__':
     else:
         model = Learner(input_dim=args.input_dim, drop_p=args.drop).to(device)
 
-    optimizer = torch.optim.Adagrad(model.parameters(), lr=args.lr, weight_decay=args.w)
-    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[25, 50])
-    criterion = MIL
+
+    # print('Loading..')
+    # state = {
+    #     'net': model.state_dict(),
+    # }
+    # if not os.path.isdir('checkpoint'):
+    #     os.mkdir('checkpoint')
+    # model_save_path = r"'./checkpoint/ckpt.pth'"
+    # assert os.path.exists(model_save_path)
+    # state = torch.load(model_save_path)
+    # model.load_state_dict(state['net'])
+    #
+    # optimizer = torch.optim.Adagrad(model.parameters(), lr=args.lr, weight_decay=args.w)
+    # scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[25, 50])
+    # criterion = MIL
 
     for epoch in range(0, 20):
         train(epoch)
