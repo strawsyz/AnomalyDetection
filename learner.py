@@ -108,7 +108,8 @@ class Learner(nn.Module):
         if vars is None:
             vars = self.vars
         x = F.linear(x, vars[0], vars[1])  # 还想改善了一点
-        x = F.relu(x)
+        x = F.relu(x)  # 改善了0.02
+        x = F.dropout(x, self.drop_p, training=self.training)
 
         outputs = [0 for i in range(len(x))]
 
@@ -126,7 +127,6 @@ class Learner(nn.Module):
 
         return torch.stack(outputs, dim=0)
 
-        x = F.dropout(x, self.drop_p, training=self.training)
         x = F.linear(x, vars[2], vars[3])
         x = F.dropout(x, self.drop_p, training=self.training)
         x = F.linear(x, vars[4], vars[5])
