@@ -143,9 +143,9 @@ if __name__ == '__main__':
     # state = torch.load(model_save_path)
     # model.load_state_dict(state['net'])
     #
-    # optimizer = torch.optim.Adagrad(model.parameters(), lr=args.lr, weight_decay=args.w)
-    # scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[25, 50])
-    # criterion = MIL
+    optimizer = torch.optim.Adagrad(model.parameters(), lr=args.lr, weight_decay=args.w)
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[25, 50])
+    criterion = MIL
 
     for epoch in range(0, 20):
         train(epoch)
