@@ -83,6 +83,9 @@ class Learner(nn.Module):
         else:
             memory = self.a_memory
 
+        a_caption_score = self.calculate_feature_score(self.a_memory, caption)
+        n_caption_score = self.calculate_feature_score(self.n_memory, caption)
+
         if self.training:
             if len(memory) > 1:
                 caption_score = self.calculate_feature_score(memory, caption)
@@ -93,8 +96,6 @@ class Learner(nn.Module):
                 memory.append(caption)
                 # captions.append()
 
-        a_caption_score = self.calculate_feature_score(self.a_memory, caption)
-        n_caption_score = self.calculate_feature_score(self.n_memory, caption)
         return a_caption_score - n_caption_score
 
     def forward(self, x, vars=None, gt=None):
@@ -123,19 +124,23 @@ class Learner(nn.Module):
         np.random.shuffle(indexes)
         for index in indexes:
             caption = x[index]
-            if index < int(len(x) // 2):
+            # if index < int(len(x) // 2):
+            if (index//32)%2 == 0:  # 如果是0~31，之类的情况
                 gt = 1
-            else:
+            else:  # 如果是32~63，之类的情况
                 gt = -1
             anomaly_score = self.calculate_anomaly_score(caption, gt)
             # outputs.append(anomaly_score)
             # print(anomaly_score, gt)
             outputs[index] = anomaly_score
-
-        return torch.stack(outputs, dim=0)
+        outputs = torch.stack(outputs, dim=0)
+        # print(outputs.max())
+        # print(outputs.min())
+        return torch.sigmoid(outputs)  # 加了simoid的之后的loss不再下降, 精度会有一点的下降
 
         x = F.linear(x, vars[4], vars[5])
-        return torch.sigmoid(x)
+
+        return torch.sigmoid(x)  # 这边会对所有的score做一个平衡
 
 
 

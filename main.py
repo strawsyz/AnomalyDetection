@@ -81,7 +81,7 @@ def test_abnormal(epoch):
 
         if best_auc < auc / 140:
             print("No Saving")
-            best_auc = auc
+            best_auc = auc/140
             # print('Saving..')
             # state = {
             #     'net': model.state_dict(),
@@ -90,6 +90,7 @@ def test_abnormal(epoch):
             #     os.mkdir('checkpoint')
             # torch.save(state, './checkpoint/ckpt.pth')
             # best_auc = auc / 140
+    return auc / 140
 
 def set_seed(random_state: int = 0):
     if random_state is not None:
@@ -152,11 +153,13 @@ if __name__ == '__main__':
     optimizer = torch.optim.Adagrad(model.parameters(), lr=args.lr, weight_decay=args.w)
     scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[25, 50])
     criterion = MIL
-
+    aucs = []
     for epoch in range(0, 20):
         train(epoch)
-        test_abnormal(epoch)
-    print("best_auc", best_auc/140)
+        auc = test_abnormal(epoch)
+        aucs.append(auc)
+    print(aucs)
+    print("best_auc", best_auc / 140)
 
 # Epoch: 74
 # loss = 0.4205668259550024
