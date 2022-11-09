@@ -86,16 +86,14 @@ class Learner(nn.Module):
         a_caption_score = self.calculate_feature_score(self.a_memory, caption)
         n_caption_score = self.calculate_feature_score(self.n_memory, caption)
 
-        if self.training:
+        if self.training and update:
             if len(memory) > 1:
                 caption_score = self.calculate_feature_score(memory, caption)
-                if update:
-                    if self.threshold_caption_score > caption_score:
-                        memory.append(caption)
+                if self.threshold_caption_score > caption_score:
+                    memory.append(caption)
             else:
                 # caption_score = self.calculate_caption_score(memory, caption)
-                if update:
-                    memory.append(caption)
+                memory.append(caption)
                 # captions.append()
 
         return a_caption_score - n_caption_score
@@ -123,19 +121,20 @@ class Learner(nn.Module):
         x_1 = F.linear(x, vars[4], vars[5])
         output1 = torch.sigmoid(x_1)
         # return output1
-        batch_size = 30
-        for i in range(batch_size):
-            index_a = torch.argmax(output1[i * 2 * 32: 2 * i * 32 + 32])
-            index = 2 * i * 32 + index_a
-            caption = x[index]
-            gt = 1
-            anomaly_score = self.calculate_anomaly_score(caption, gt, update=True)
+        batch_size = int(len(x)/64)
+        if len(x) % 64 ==0:
+            for i in range(batch_size):
+                index_a = torch.argmax(output1[i * 2 * 32: 2 * i * 32 + 32])
+                index = 2 * i * 32 + index_a
+                caption = x[index]
+                gt = 1
+                anomaly_score = self.calculate_anomaly_score(caption, gt, update=True)
 
-            index_n = torch.argmax(output1[2 * i * 32 + 32: 2 * i * 32 + 64])
-            index = 2 * i * 32 + 32 + index_n
-            caption = x[index]
-            gt = -1
-            anomaly_score = self.calculate_anomaly_score(caption, gt, update=True)
+                index_n = torch.argmax(output1[2 * i * 32 + 32: 2 * i * 32 + 64])
+                index = 2 * i * 32 + 32 + index_n
+                caption = x[index]
+                gt = -1
+                anomaly_score = self.calculate_anomaly_score(caption, gt, update=True)
 
         outputs = [0 for i in range(len(x))]
 
