@@ -118,7 +118,7 @@ if __name__ == '__main__':
     best_auc = 0
     train_batch_size = 30
     test_batch_size = 1
-    args.lr = 0.001
+    args.lr = 0.01
     normal_train_dataset = Normal_Loader(is_train=1, modality=args.modality)
     normal_test_dataset = Normal_Loader(is_train=0, modality=args.modality)
 
