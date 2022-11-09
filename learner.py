@@ -61,6 +61,9 @@ class Learner(nn.Module):
         # 找到最相似的memory的距离，作为这个caption的特异性,这个数字越小，说明和这个caption相似的memory越少，也说明越有保存的价值
         return caption_score
 
+        # 不管有没有使用预训练的模型，结果结构都会是0.5
+        # 求
+
         # if len(caption_scores) == 1:
         #     return caption_scores[0]
         # else:
