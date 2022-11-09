@@ -159,7 +159,7 @@ if __name__ == '__main__':
         auc = test_abnormal(epoch)
         aucs.append(auc)
     print(aucs)
-    print("best_auc", best_auc / 140)
+    print("best_auc", best_auc)
 
 # Epoch: 74
 # loss = 0.4205668259550024

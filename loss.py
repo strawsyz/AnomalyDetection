@@ -12,15 +12,19 @@ def MIL(y_pred, batch_size, is_transformer=0, model=None):
         y_pred = torch.sigmoid(y_pred)
     indexes_anomaly = []
     for i in range(batch_size):
-        anomaly_index = torch.randperm(32).cuda()
-        normal_index = torch.randperm(32).cuda()
+        # anomaly_index = torch.randperm(32).cuda()
+        # normal_index = torch.randperm(32).cuda()
+        #
+        # y_anomaly = y_pred[i, :32][anomaly_index]
+        # y_normal  = y_pred[i, 32:][normal_index]
 
-        y_anomaly = y_pred[i, :32][anomaly_index]
-        y_normal  = y_pred[i, 32:][normal_index]
+        y_anomaly = y_pred[i, :32]
+        y_normal = y_pred[i, 32:]
 
         y_anomaly_max = torch.max(y_anomaly)  # anomaly
         index_anomaly = torch.argmax(y_anomaly)
         indexes_anomaly.append(index_anomaly)
+
         y_anomaly_min = torch.min(y_anomaly)
 
         y_normal_max = torch.max(y_normal)  # normal

@@ -77,7 +77,7 @@ class Learner(nn.Module):
             if type(layer) == nn.Linear:
                 nn.init.xavier_normal_(layer.weight)
 
-    def calculate_anomaly_score(self, caption, gt):
+    def calculate_anomaly_score(self, caption, gt, update=True):
         if gt == -1:
             memory = self.n_memory
         else:
@@ -89,11 +89,13 @@ class Learner(nn.Module):
         if self.training:
             if len(memory) > 1:
                 caption_score = self.calculate_feature_score(memory, caption)
-                if self.threshold_caption_score > caption_score:
-                    memory.append(caption)
+                if update:
+                    if self.threshold_caption_score > caption_score:
+                        memory.append(caption)
             else:
                 # caption_score = self.calculate_caption_score(memory, caption)
-                memory.append(caption)
+                if update:
+                    memory.append(caption)
                 # captions.append()
 
         return a_caption_score - n_caption_score
@@ -118,6 +120,23 @@ class Learner(nn.Module):
 
         # 由于没有使用预训练的模型，导致初期生成的特征量没有参考性，结果就不好
 
+        x_1 = F.linear(x, vars[4], vars[5])
+        output1 = torch.sigmoid(x_1)
+        # return output1
+        batch_size = 30
+        for i in range(batch_size):
+            index_a = torch.argmax(output1[i * 2 * 32: 2 * i * 32 + 32])
+            index = 2 * i * 32 + index_a
+            caption = x[index]
+            gt = 1
+            anomaly_score = self.calculate_anomaly_score(caption, gt, update=True)
+
+            index_n = torch.argmax(output1[2 * i * 32 + 32: 2 * i * 32 + 64])
+            index = 2 * i * 32 + 32 + index_n
+            caption = x[index]
+            gt = -1
+            anomaly_score = self.calculate_anomaly_score(caption, gt, update=True)
+
         outputs = [0 for i in range(len(x))]
 
         indexes = np.arange(len(x))
@@ -125,7 +144,7 @@ class Learner(nn.Module):
         for index in indexes:
             caption = x[index]
             # if index < int(len(x) // 2):
-            if (index//32)%2 == 0:  # 如果是0~31，之类的情况
+            if (index // 32) % 2 == 0:  # 如果是0~31，之类的情况
                 gt = 1
             else:  # 如果是32~63，之类的情况
                 gt = -1
@@ -137,11 +156,6 @@ class Learner(nn.Module):
         # print(outputs.max())
         # print(outputs.min())
         return torch.sigmoid(outputs)  # 加了simoid的之后的loss不再下降, 精度会有一点的下降
-
-        x = F.linear(x, vars[4], vars[5])
-
-        return torch.sigmoid(x)  # 这边会对所有的score做一个平衡
-
 
 
     def parameters(self):
