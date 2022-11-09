@@ -29,28 +29,10 @@ class Learner(nn.Module):
 
         # 多级memory，根据不同的layer层次存储不同的memory
 
-        self.threshold_caption_score = 0.6 # 越大，需要记忆的memory就越多，loss会有一点点减少，auc能有一点的提升
+        self.threshold_caption_score = 0.2 # 越大，需要记忆的memory就越多，loss会有一点点减少，auc能有一点的提升
 
         for i, param in enumerate(self.classifier.parameters()):
             self.vars.append(param)
-
-    def calculate_caption_score(self, memory, caption):
-        """caption score越高，说明和其他的memory比较接近，没有保存的必要
-        越低，说明是一个比较新的样本，可以用来扩张memory的空间"""
-
-        # cap 特征量不是小数无法直接用于计算相似度
-        # cap_feature = cap.cpu().numpy()
-        # 可以生成caption，但是必须转化为list
-        from sklearn.metrics.pairwise import cosine_similarity
-
-        embeddings = self.ss.encode(memory + [caption])
-        caption_scores = []
-        for i in range(len(memory)):
-            caption_scores.append(cosine_similarity([embeddings[i]], [embeddings[-1]]))
-
-        caption_score = torch.mean(torch.tensor(caption_scores))
-        # 找到最相似的memory的距离，作为这个caption的特异性,这个数字越小，说明和这个caption相似的memory越少，也说明越有保存的价值
-        return caption_score
 
     def calculate_feature_score(self, memory, feature):
         """caption score越高，说明和其他的memory比较接近，没有保存的必要
@@ -72,8 +54,10 @@ class Learner(nn.Module):
         #
         # caption_score = torch.cat(caption_scores, dim=0).max()
 
-        caption_score = Variable(torch.cosine_similarity(torch.stack(memory, dim=0), feature),
-                                 requires_grad=True).abs().max()
+        # caption_score = Variable(torch.cosine_similarity(torch.stack(memory, dim=0), feature), # 不知道为什么无法计算这边的梯度
+        #                          requires_grad=True).abs().max()
+        caption_score = (Variable(torch.stack(memory, dim=0)) * feature).mean(dim=1).max()  # 使用乘号来表示相似度
+        # print(caption_score)
         # 找到最相似的memory的距离，作为这个caption的特异性,这个数字越小，说明和这个caption相似的memory越少，也说明越有保存的价值
         return caption_score
 
@@ -113,6 +97,8 @@ class Learner(nn.Module):
     def forward(self, x, vars=None, gt=None):
         if vars is None:
             vars = self.vars
+        # print(vars[0][0][-10:])
+        # print(vars[1][0])
         # 不通过模型，直接使用特征量计算，loss一直在2以上 # AUC: 0.34005
         x = F.linear(x, vars[0], vars[1])  # 好像改善了一点
         x = F.relu(x)  # 改善了0.02
@@ -140,14 +126,15 @@ class Learner(nn.Module):
                 gt = -1
             anomaly_score = self.calculate_anomaly_score(caption, gt)
             # outputs.append(anomaly_score)
+            # print(anomaly_score, gt)
             outputs[index] = anomaly_score
 
         return torch.stack(outputs, dim=0)
 
-
         x = F.linear(x, vars[4], vars[5])
-
         return torch.sigmoid(x)
+
+
 
     def parameters(self):
         """

@@ -1,3 +1,4 @@
+from torch.autograd import Variable
 from torch.utils.data import DataLoader
 from learner import Learner
 from loss import *
@@ -18,12 +19,15 @@ def train(epoch):
     for batch_idx, (normal_inputs, anomaly_inputs) in enumerate(zip(normal_train_loader, anomaly_train_loader)):
         i += 1
         inputs = torch.cat([anomaly_inputs, normal_inputs], dim=1)
+        # inputs = Variable(inputs)
         batch_size = inputs.shape[0]
         inputs = inputs.view(-1, inputs.size(-1)).to(device)
         outputs = model(inputs)
         loss = criterion(outputs, batch_size)
         optimizer.zero_grad()
-        loss.backward()
+        # grads = [x.grad for x in optimizer.param_groups[0]]
+        # print(grads)
+        loss.backward(retain_graph=True)
         print(loss)
         print("len(a_memory)", len(model.a_memory))
         print("len(n_memory)", len(model.n_memory))
@@ -76,14 +80,16 @@ def test_abnormal(epoch):
         print('auc = {}', auc / 140)
 
         if best_auc < auc / 140:
-            print('Saving..')
-            state = {
-                'net': model.state_dict(),
-            }
-            if not os.path.isdir('checkpoint'):
-                os.mkdir('checkpoint')
-            torch.save(state, './checkpoint/ckpt.pth')
-            best_auc = auc / 140
+            print("No Saving")
+
+            # print('Saving..')
+            # state = {
+            #     'net': model.state_dict(),
+            # }
+            # if not os.path.isdir('checkpoint'):
+            #     os.mkdir('checkpoint')
+            # torch.save(state, './checkpoint/ckpt.pth')
+            # best_auc = auc / 140
 
 
 def set_seed(random_state: int = 0):
@@ -112,6 +118,7 @@ if __name__ == '__main__':
     best_auc = 0
     train_batch_size = 30
     test_batch_size = 1
+    args.lr = 0.01
     normal_train_dataset = Normal_Loader(is_train=1, modality=args.modality)
     normal_test_dataset = Normal_Loader(is_train=0, modality=args.modality)
 
@@ -132,17 +139,17 @@ if __name__ == '__main__':
         model = Learner(input_dim=args.input_dim, drop_p=args.drop).to(device)
 
 
-    # print('Loading..')
-    # state = {
-    #     'net': model.state_dict(),
-    # }
-    # if not os.path.isdir('checkpoint'):
-    #     os.mkdir('checkpoint')
-    # model_save_path = r"'./checkpoint/ckpt.pth'"
-    # assert os.path.exists(model_save_path)
-    # state = torch.load(model_save_path)
-    # model.load_state_dict(state['net'])
-    #
+    print('Loading..')
+    state = {
+        'net': model.state_dict(),
+    }
+    if not os.path.isdir('checkpoint'):
+        os.mkdir('checkpoint')
+    model_save_path = r"./checkpoint/ckpt.pth"
+    assert os.path.exists(model_save_path)
+    state = torch.load(model_save_path)
+    model.load_state_dict(state['net'])
+
     optimizer = torch.optim.Adagrad(model.parameters(), lr=args.lr, weight_decay=args.w)
     scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[25, 50])
     criterion = MIL
