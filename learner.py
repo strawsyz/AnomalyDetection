@@ -29,7 +29,7 @@ class Learner(nn.Module):
 
         # 多级memory，根据不同的layer层次存储不同的memory
 
-        self.threshold_caption_score = 0.2 # 越大，需要记忆的memory就越多，loss会有一点点减少，auc能有一点的提升
+        self.threshold_caption_score = 0.01  # 越大，需要记忆的memory就越多，loss会有一点点减少，auc能有一点的提升
 
         for i, param in enumerate(self.classifier.parameters()):
             self.vars.append(param)
@@ -128,13 +128,13 @@ class Learner(nn.Module):
                 index = 2 * i * 32 + index_a
                 caption = x[index]
                 gt = 1
-                anomaly_score = self.calculate_anomaly_score(caption, gt, update=True)
+                anomaly_score = self.calculate_anomaly_score(caption, gt)
 
                 index_n = torch.argmax(output1[2 * i * 32 + 32: 2 * i * 32 + 64])
                 index = 2 * i * 32 + 32 + index_n
                 caption = x[index]
                 gt = -1
-                anomaly_score = self.calculate_anomaly_score(caption, gt, update=True)
+                anomaly_score = self.calculate_anomaly_score(caption, gt)
 
         outputs = [0 for i in range(len(x))]
 
@@ -147,7 +147,7 @@ class Learner(nn.Module):
                 gt = 1
             else:  # 如果是32~63，之类的情况
                 gt = -1
-            anomaly_score = self.calculate_anomaly_score(caption, gt)
+            anomaly_score = self.calculate_anomaly_score(caption, gt, update=False)
             # outputs.append(anomaly_score)
             # print(anomaly_score, gt)
             outputs[index] = anomaly_score
