@@ -207,7 +207,7 @@ class Learner(nn.Module):
         outputs = torch.sigmoid(outputs)
 
         # return  output1
-        return (outputs +e output1)/2  # 加了simoid的之后的loss不再下降, 精度会有一点的下降
+        return (outputs + output1)/2  # 加了simoid的之后的loss不再下降, 精度会有一点的下降
 
 
     def parameters(self):
