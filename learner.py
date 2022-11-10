@@ -43,7 +43,7 @@ class Learner(nn.Module):
             # indexes = torch.argmax(memory * torch.transpose(memory, 0, 1))
             saliency_scores = memory.mm(torch.transpose(memory, 0, 1)).mean(dim=1)
             saliency_scores = torch.argsort(saliency_scores)
-            indexes = saliency_scores[-self.threshold_memory_size:]
+            indexes = saliency_scores[-self.threshold_a_memory_size:]
             for index in indexes:
                 a_memory.append(self.a_memory[index])
             print(f" {len(self.a_memory)} -> {len(indexes)}")
@@ -54,7 +54,7 @@ class Learner(nn.Module):
             # indexes = torch.argmax(memory * torch.transpose(memory, 0, 1))
             saliency_scores = memory.mm(torch.transpose(memory, 0, 1)).mean(dim=1)
             saliency_scores = torch.argsort(saliency_scores)
-            indexes = saliency_scores[-self.threshold_memory_size:]
+            indexes = saliency_scores[-self.threshold_n_memory_size:]
             for index in indexes:
                 n_memory.append(self.n_memory[index])
             print(f" {len(self.n_memory)} -> {len(indexes)}")
