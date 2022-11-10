@@ -30,9 +30,35 @@ class Learner(nn.Module):
         # 多级memory，根据不同的layer层次存储不同的memory
 
         self.threshold_caption_score = 0.1  # 越大，需要记忆的memory就越多，loss会有一点点减少，auc能有一点的提升
-
+        # self.threshold_memory_size = 3
+        self.threshold_a_memory_size = 20
+        self.threshold_n_memory_size = 20
         for i, param in enumerate(self.classifier.parameters()):
             self.vars.append(param)
+
+    def optimize_memory(self):
+        a_memory = []
+        if len(self.a_memory) > self.threshold_a_memory_size:
+            memory = torch.stack(self.a_memory)
+            # indexes = torch.argmax(memory * torch.transpose(memory, 0, 1))
+            saliency_scores = memory.mm(torch.transpose(memory, 0, 1)).mean(dim=1)
+            saliency_scores = torch.argsort(saliency_scores)
+            indexes = saliency_scores[-self.threshold_memory_size:]
+            for index in indexes:
+                a_memory.append(self.a_memory[index])
+            print(f" {len(self.a_memory)} -> {len(indexes)}")
+            self.a_memory = a_memory
+        n_memory = []
+        if len(self.n_memory) > self.threshold_n_memory_size:
+            memory = torch.stack(self.n_memory)
+            # indexes = torch.argmax(memory * torch.transpose(memory, 0, 1))
+            saliency_scores = memory.mm(torch.transpose(memory, 0, 1)).mean(dim=1)
+            saliency_scores = torch.argsort(saliency_scores)
+            indexes = saliency_scores[-self.threshold_memory_size:]
+            for index in indexes:
+                n_memory.append(self.n_memory[index])
+            print(f" {len(self.n_memory)} -> {len(indexes)}")
+            self.n_memory = n_memory
 
     def calculate_feature_score(self, memory, feature):
         """caption score越高，说明和其他的memory比较接近，没有保存的必要
@@ -118,18 +144,21 @@ class Learner(nn.Module):
 
         # 由于没有使用预训练的模型，导致初期生成的特征量没有参考性，结果就不好
 
+        self.optimize_memory()
+
         x_1 = F.linear(x, vars[4], vars[5])
         output1 = torch.sigmoid(x_1)
         # return output1
-        batch_size = int(len(x)/64)
-        if len(x) % 64 ==0:
+        batch_size = int(len(x) / 64)
+        if len(x) % 64 == 0:
             for i in range(batch_size):
+                # 添加异常视频中可能为异常片段的记忆
                 index_a = torch.argmax(output1[i * 2 * 32: 2 * i * 32 + 32])
                 index = 2 * i * 32 + index_a
                 caption = x[index]
                 gt = 1
                 anomaly_score = self.calculate_anomaly_score(caption, gt)
-
+                # 添加正常的记忆
                 # index_n = torch.argmax(output1[2 * i * 32 + 32: 2 * i * 32 + 64])
                 # index = 2 * i * 32 + 32 + index_n
                 # caption = x[index]
