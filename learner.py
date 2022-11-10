@@ -205,9 +205,10 @@ class Learner(nn.Module):
             outputs[index] = anomaly_score
         outputs = torch.stack(outputs, dim=0)
         outputs = torch.sigmoid(outputs)
+        outputs = torch.unsqueeze(outputs, dim=1)
 
         # return  output1
-        return (outputs + output1)/2  # 加了simoid的之后的loss不再下降, 精度会有一点的下降
+        return (outputs + output1)/2  # 加了sigmoid的之后的loss不再下降, 精度会有一点的下降
 
 
     def parameters(self):
