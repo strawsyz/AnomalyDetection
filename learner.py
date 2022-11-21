@@ -89,6 +89,7 @@ class Learner(nn.Module):
             self.n_memory = n_memory
 
     def clear_memory(self, rate=None):
+        print("clear memory", rate)
         if rate is None:
             self.a_memory = []
             self.n_memory = []
