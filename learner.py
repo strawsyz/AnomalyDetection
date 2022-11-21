@@ -30,7 +30,8 @@ class Learner(nn.Module):
 
         # 多级memory，根据不同的layer层次存储不同的memory
 
-        self.threshold_caption_score = 0.1  # 越大，需要记忆的memory就越多，loss会有一点点减少，auc能有一点的提升
+        self.threshold_a_caption_score = 0.1
+        self.threshold_n_caption_score = 0.01  # 越大，需要记忆的memory就越多，loss会有一点点减少，auc能有一点的提升
         # self.threshold_memory_size = 3
         self.threshold_a_memory_size = 20
         self.threshold_n_memory_size = 20
@@ -105,8 +106,10 @@ class Learner(nn.Module):
     def calculate_anomaly_score(self, caption, gt, update=True):
         if gt == -1:
             memory = self.n_memory
+            threshold = self.threshold_a_caption_score
         elif gt ==1:
             memory = self.a_memory
+            threshold = self.threshold_n_caption_score
         else:
             raise RuntimeError("No such memory")
 
@@ -116,7 +119,7 @@ class Learner(nn.Module):
         if self.training and update:
             if len(memory) > 1:
                 caption_score = self.calculate_feature_score(memory, caption)
-                if self.threshold_caption_score > caption_score:
+                if threshold > caption_score:
                     memory.append(caption)
             else:
                 # caption_score = self.calculate_caption_score(memory, caption)
