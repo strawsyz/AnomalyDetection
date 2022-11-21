@@ -90,19 +90,22 @@ class Learner(nn.Module):
 
     def clear_memory(self, rate=None):
         print("clear memory", rate)
+
         if rate is None:
             self.a_memory = []
             self.n_memory = []
         else:
             indexes = [i for i in range(len(self.a_memory))]
             np.random.shuffle(indexes)
-            indexes = indexes[max(1, int(len(indexes) * rate))]
-            self.a_memory = self.a_memory[indexes]
+            indexes = indexes[:max(1, int(len(indexes) * rate))]
+            self.a_memory = [self.a_memory[i] for i in indexes]
+            # self.a_memory = self.a_memory[indexes]
 
             indexes = [i for i in range(len(self.n_memory))]
             np.random.shuffle(indexes)
-            indexes = indexes[max(1, int(len(indexes) * rate))]
-            self.n_memory = self.self.n_memory[indexes]
+            indexes = indexes[:max(1, int(len(indexes) * rate))]
+            self.n_memory = [self.n_memory[i] for i in indexes]
+            # self.n_memory = self.self.n_memory[indexes]
 
     def calculate_feature_score(self, memory, feature):
         """caption score越高，说明和其他的memory比较接近，没有保存的必要

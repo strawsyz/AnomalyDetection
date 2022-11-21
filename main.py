@@ -39,7 +39,9 @@ def train(epoch):
         n_iter +=1
         if n_iter % optimize_iter == 0:
             with torch.no_grad():
+                model.clear_memory(0.4)
                 model.optimize_memory()
+
     # print(model.a_memory)
     # print(model.n_memory)
     print('loss = {}'.format(train_loss / len(normal_train_loader)))
@@ -175,8 +177,7 @@ if __name__ == '__main__':
         auc = test_abnormal(epoch)
         aucs.append(auc)
         # model.optimize_memory()
-
-        model.clear_memory()
+        model.clear_memory(0.4)
 
     print(aucs)
     print("best_auc", best_auc)
