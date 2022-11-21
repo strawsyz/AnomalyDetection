@@ -197,9 +197,9 @@ class Learner(nn.Module):
         # 模型太多比较的次数可能会太多
 
         # 由于没有使用预训练的模型，导致初期生成的特征量没有参考性，结果就不好
-        x_1 = F.linear(x, vars[4], vars[5])
-        output1 = torch.sigmoid(x_1)
-        return output1
+        # x_1 = F.linear(x, vars[4], vars[5])
+        # output1 = torch.sigmoid(x_1)
+        # return output1
 
         # self.add_anomaly_memory(inputs, output1)
 
