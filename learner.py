@@ -3,6 +3,7 @@ import torch.nn as nn
 from torch.autograd import Variable
 from torch.nn import functional as F
 import numpy as np
+from kmeans_pytorch import kmeans
 
 
 class Learner(nn.Module):
@@ -30,8 +31,8 @@ class Learner(nn.Module):
 
         # 多级memory，根据不同的layer层次存储不同的memory
 
-        self.threshold_a_caption_score = 0.1
-        self.threshold_n_caption_score = 0.01  # 越大，需要记忆的memory就越多，loss会有一点点减少，auc能有一点的提升
+        self.threshold_a_caption_score = 0.3
+        self.threshold_n_caption_score = 0.1  # 越大，需要记忆的memory就越多，loss会有一点点减少，auc能有一点的提升
         # self.threshold_memory_size = 3
         self.threshold_a_memory_size = 20
         self.threshold_n_memory_size = 20
@@ -40,28 +41,67 @@ class Learner(nn.Module):
         for i, param in enumerate(self.classifier.parameters()):
             self.vars.append(param)
 
+    def cluster_memory(self, memory, num_clusters):
+        # data_size, dims, num_clusters = 1000, 32, 20
+        # x = np.random.randn(data_size, dims) / 6
+        # x = torch.from_numpy(x)
+
+        cluster_ids_x, cluster_centers = kmeans(
+            X=memory, num_clusters=num_clusters, distance='cosine', device=torch.device('cuda:0')
+        )
+        memory = []
+        for cluster_center in cluster_centers:
+            memory.append(cluster_center)
+        return memory
+        # return cluster_centers.cuda()
+
     def optimize_memory(self):
         a_memory = []
         if len(self.a_memory) > self.threshold_a_memory_size:
             memory = torch.stack(self.a_memory)
+            # self.a_memory = self.cluster_memory(memory, self.min_a_memory_size)
+            # for i in range(len)
+            # similarity = torch.cosine_similarity(memory, memory, dim=0)
+
             saliency_scores = memory.mm(torch.transpose(memory, 0, 1)).mean(dim=1)
-            saliency_scores = torch.argsort(saliency_scores)
-            indexes = saliency_scores[:self.min_a_memory_size]  # 挑选相似度最小的几个，让记忆的内容尽可能不相同
+            saliency_indexes = torch.argsort(saliency_scores)
+            indexes = saliency_indexes[:self.min_a_memory_size]  # 挑选相似度最小的几个，让记忆的内容尽可能不相同
             for index in indexes:
                 a_memory.append(self.a_memory[index])
+            self.threshold_a_caption_score = saliency_scores[index] / self.a_memory[0].shape[0]
+
             print(f" {len(self.a_memory)} -> {len(indexes)}")
             self.a_memory = a_memory
         n_memory = []
         if len(self.n_memory) > self.threshold_n_memory_size:
             memory = torch.stack(self.n_memory)
+            # self.n_memory = self.cluster_memory(memory, self.min_n_memory_size)
+
             # indexes = torch.argmax(memory * torch.transpose(memory, 0, 1))
             saliency_scores = memory.mm(torch.transpose(memory, 0, 1)).mean(dim=1)
-            saliency_scores = torch.argsort(saliency_scores)
-            indexes = saliency_scores[:self.min_n_memory_size]
+            saliency_indexes = torch.argsort(saliency_scores)
+            indexes = saliency_indexes[:self.min_n_memory_size]
             for index in indexes:
                 n_memory.append(self.n_memory[index])
+            self.threshold_n_caption_score = saliency_scores[index] / self.n_memory[0].shape[0]
+
             print(f" {len(self.n_memory)} -> {len(indexes)}")
             self.n_memory = n_memory
+
+    def clear_memory(self, rate=None):
+        if rate is None:
+            self.a_memory = []
+            self.n_memory = []
+        else:
+            indexes = [i for i in range(len(self.a_memory))]
+            np.random.shuffle(indexes)
+            indexes = indexes[max(1, int(len(indexes) * rate))]
+            self.a_memory = self.a_memory[indexes]
+
+            indexes = [i for i in range(len(self.n_memory))]
+            np.random.shuffle(indexes)
+            indexes = indexes[max(1, int(len(indexes) * rate))]
+            self.n_memory = self.self.n_memory[indexes]
 
     def calculate_feature_score(self, memory, feature):
         """caption score越高，说明和其他的memory比较接近，没有保存的必要
@@ -85,7 +125,10 @@ class Learner(nn.Module):
 
         # caption_score = Variable(torch.cosine_similarity(torch.stack(memory, dim=0), feature), # 不知道为什么无法计算这边的梯度
         #                          requires_grad=True).abs().max()
-        caption_score = (Variable(torch.stack(memory, dim=0)) * feature).sum(dim=1).max()  # 使用乘号来表示相似度
+        if type(memory) is list:
+            caption_score = (Variable(torch.stack(memory, dim=0)) * feature).mean(dim=1).max()  # 使用乘号来表示相似度
+        else:
+            caption_score = (Variable(memory) * feature).mean(dim=1).max()  # 使用乘号来表示相似度
         # print(caption_score)
         # 找到最相似的memory的距离，作为这个caption的特异性,这个数字越小，说明和这个caption相似的memory越少，也说明越有保存的价值
         return caption_score
@@ -106,10 +149,13 @@ class Learner(nn.Module):
     def calculate_anomaly_score(self, caption, gt, update=True):
         if gt == -1:
             memory = self.n_memory
-            threshold = self.threshold_a_caption_score
-        elif gt ==1:
-            memory = self.a_memory
             threshold = self.threshold_n_caption_score
+            memory_threshold = self.threshold_n_memory_size
+        elif gt == 1:
+            memory = self.a_memory
+            threshold = self.threshold_a_caption_score
+            memory_threshold = self.threshold_a_memory_size
+
         else:
             raise RuntimeError("No such memory")
 
@@ -121,6 +167,7 @@ class Learner(nn.Module):
                 caption_score = self.calculate_feature_score(memory, caption)
                 if threshold > caption_score:
                     memory.append(caption)
+                # if len(memory) > self.threshold_n_memory_size
             else:
                 # caption_score = self.calculate_caption_score(memory, caption)
                 memory.append(caption)
@@ -185,8 +232,8 @@ class Learner(nn.Module):
         # return x
 
         # inputs = torch.clone(x)
-        x = F.relu(x)  # 改善了0.02
-        x = F.dropout(x, self.drop_p, training=self.training)  # 改善了不少  #0.5191871161161531
+        # x = F.relu(x)  # 改善了0.02
+        # x = F.dropout(x, self.drop_p, training=self.training)  # 改善了不少  #0.5191871161161531
         # x = F.linear(x, vars[2], vars[3])  # AUC 是0.468左右
         # x = F.dropout(x, self.drop_p, training=self.training)  # 0.44033766356249904
         # 层数越深，需要记忆的模式就越多，AUC就越高，直接使用memory反而会对结果产生不好的影响

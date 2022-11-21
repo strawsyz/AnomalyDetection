@@ -50,7 +50,7 @@ def test_abnormal(epoch):
     model.eval()
     global best_auc
     auc = 0
-    visulization_iter = 1000
+    visulization_iter = 200
     with torch.no_grad():
         for i, (data, data2) in enumerate(zip(anomaly_test_loader, normal_test_loader)):
             inputs, gts, frames = data
@@ -80,12 +80,12 @@ def test_abnormal(epoch):
             gt_list2 = np.zeros(frames2[0])
             score_list3 = np.concatenate((score_list, score_list2), axis=0)
             gt_list3 = np.concatenate((gt_list, gt_list2), axis=0)
-            if i % visulization_iter:
+            if i // visulization_iter:
                 plt.plot(gt_list3)
                 plt.plot(score_list3)
                 plt.show()
             fpr, tpr, thresholds = metrics.roc_curve(gt_list3, score_list3, pos_label=1)
-            print(thresholds)
+            # print(thresholds)
             auc += metrics.auc(fpr, tpr)
 
         print('auc = {}', auc / 140)
@@ -133,7 +133,7 @@ if __name__ == '__main__':
     train_batch_size = 30
     test_batch_size = 1
     n_iter = 0
-    optimize_iter = 1
+    optimize_iter = 10
     args.lr = 0.01
     normal_train_dataset = Normal_Loader(is_train=1, modality=args.modality)
     normal_test_dataset = Normal_Loader(is_train=0, modality=args.modality)
@@ -155,30 +155,32 @@ if __name__ == '__main__':
         model = Learner(input_dim=args.input_dim, drop_p=args.drop).to(device)
 
 
-    # print('Loading..')
-    # state = {
-    #     'net': model.state_dict(),
-    # }
-    # if not os.path.isdir('checkpoint'):
-    #     os.mkdir('checkpoint')
-    # model_save_path = r"./checkpoint/ckpt.pth"
-    # assert os.path.exists(model_save_path)
-    # state = torch.load(model_save_path)
-    # model.load_state_dict(state['net'])
+    print('Loading..')
+    state = {
+        'net': model.state_dict(),
+    }
+    if not os.path.isdir('checkpoint'):
+        os.mkdir('checkpoint')
+    model_save_path = r"./checkpoint/ckpt.pth"
+    assert os.path.exists(model_save_path)
+    state = torch.load(model_save_path)
+    model.load_state_dict(state['net'])
 
     optimizer = torch.optim.Adagrad(model.parameters(), lr=args.lr, weight_decay=args.w)
     scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[25, 50])
     criterion = MIL
     aucs = []
-    for epoch in range(0, 80):
+    for epoch in range(0, 10):
         train(epoch)
         auc = test_abnormal(epoch)
         aucs.append(auc)
         # model.optimize_memory()
 
+        model.clear_memory()
+
     print(aucs)
     print("best_auc", best_auc)
-
+# 0.8213366706019152
 
 # Epoch: 74
 # loss = 0.4205668259550024
