@@ -37,7 +37,8 @@ def train(epoch):
         train_loss += loss.item()
         n_iter +=1
         if n_iter % optimize_iter == 0:
-            model.optimize_memory()
+            with torch.no_grad():
+                model.optimize_memory()
     # print(model.a_memory)
     # print(model.n_memory)
     print('loss = {}'.format(train_loss / len(normal_train_loader)))

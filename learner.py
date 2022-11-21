@@ -30,10 +30,12 @@ class Learner(nn.Module):
 
         # 多级memory，根据不同的layer层次存储不同的memory
 
-        self.threshold_caption_score = 0.001  # 越大，需要记忆的memory就越多，loss会有一点点减少，auc能有一点的提升
+        self.threshold_caption_score = 0.1  # 越大，需要记忆的memory就越多，loss会有一点点减少，auc能有一点的提升
         # self.threshold_memory_size = 3
         self.threshold_a_memory_size = 20
         self.threshold_n_memory_size = 20
+        self.min_a_memory_size = 10
+        self.min_n_memory_size = 10
         for i, param in enumerate(self.classifier.parameters()):
             self.vars.append(param)
 
@@ -41,10 +43,9 @@ class Learner(nn.Module):
         a_memory = []
         if len(self.a_memory) > self.threshold_a_memory_size:
             memory = torch.stack(self.a_memory)
-            # indexes = torch.argmax(memory * torch.transpose(memory, 0, 1))
             saliency_scores = memory.mm(torch.transpose(memory, 0, 1)).mean(dim=1)
             saliency_scores = torch.argsort(saliency_scores)
-            indexes = saliency_scores[-self.threshold_a_memory_size:]
+            indexes = saliency_scores[:self.min_a_memory_size]  # 挑选相似度最小的几个，让记忆的内容尽可能不相同
             for index in indexes:
                 a_memory.append(self.a_memory[index])
             print(f" {len(self.a_memory)} -> {len(indexes)}")
@@ -55,7 +56,7 @@ class Learner(nn.Module):
             # indexes = torch.argmax(memory * torch.transpose(memory, 0, 1))
             saliency_scores = memory.mm(torch.transpose(memory, 0, 1)).mean(dim=1)
             saliency_scores = torch.argsort(saliency_scores)
-            indexes = saliency_scores[-self.threshold_n_memory_size:]
+            indexes = saliency_scores[:self.min_n_memory_size]
             for index in indexes:
                 n_memory.append(self.n_memory[index])
             print(f" {len(self.n_memory)} -> {len(indexes)}")
@@ -83,7 +84,7 @@ class Learner(nn.Module):
 
         # caption_score = Variable(torch.cosine_similarity(torch.stack(memory, dim=0), feature), # 不知道为什么无法计算这边的梯度
         #                          requires_grad=True).abs().max()
-        caption_score = (Variable(torch.stack(memory, dim=0)) * feature).mean(dim=1).max()  # 使用乘号来表示相似度
+        caption_score = (Variable(torch.stack(memory, dim=0)) * feature).sum(dim=1).max()  # 使用乘号来表示相似度
         # print(caption_score)
         # 找到最相似的memory的距离，作为这个caption的特异性,这个数字越小，说明和这个caption相似的memory越少，也说明越有保存的价值
         return caption_score
@@ -121,7 +122,8 @@ class Learner(nn.Module):
                 # caption_score = self.calculate_caption_score(memory, caption)
                 memory.append(caption)
                 # captions.append()
-
+        # print("a_score", a_caption_score)
+        # print("n_score", n_caption_score)
         return a_caption_score - n_caption_score
 
     def calculate_anomaly_score_0(self, caption, gt, update=True):
@@ -201,7 +203,7 @@ class Learner(nn.Module):
         outputs = [0 for i in range(len(x))]
 
         indexes = np.arange(len(x))
-        np.random.shuffle(indexes)
+        np.random.shuffle(indexes)  # 为什么要打乱？
         for index in indexes:
             caption = x[index]
             # if index < int(len(x) // 2):
@@ -210,13 +212,13 @@ class Learner(nn.Module):
                 anomaly_score = self.calculate_anomaly_score(caption, gt, update=False)
             else:  # 如果是32~63，之类的情况
                 gt = -1
-                anomaly_score = self.calculate_anomaly_score(caption, gt)
+                anomaly_score = self.calculate_anomaly_score(caption, gt, update=True)
             outputs[index] = anomaly_score
         outputs = torch.stack(outputs, dim=0)
         outputs = torch.sigmoid(outputs)
         outputs = torch.unsqueeze(outputs, dim=1)
 
-        return  outputs
+        return outputs
         # return  output1
         # return (outputs + output1)/2  # 加了sigmoid的之后的loss不再下降, 精度会有一点的下降
 
