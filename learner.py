@@ -182,20 +182,22 @@ class Learner(nn.Module):
         # return x
 
         # inputs = torch.clone(x)
-        # x = F.relu(x)  # 改善了0.02
-        # x = F.dropout(x, self.drop_p, training=self.training)  # 改善了不少  #0.5191871161161531
+        x = F.relu(x)  # 改善了0.02
+        x = F.dropout(x, self.drop_p, training=self.training)  # 改善了不少  #0.5191871161161531
         # x = F.linear(x, vars[2], vars[3])  # AUC 是0.468左右
         # x = F.dropout(x, self.drop_p, training=self.training)  # 0.44033766356249904
-        # # 层数越深，需要记忆的模式就越多，AUC就越高，直接使用memory反而会对结果产生不好的影响
-        # # loss 也有微妙的下降的趋势，但是auc只在0.5的附近徘徊
-        # # 层数越深，需要记忆的模式越多，但是每个记忆的数量非常的少
-        # # 记忆的长度有个合适的值，太短会导致视频的大部分信息的丢失，太长会导致特征基本都比较相似，需要记忆的内容就比较小
-        # # 层数越深，特征之间的相似度就越小，特征量越短，
-        # # 模型太多比较的次数可能会太多
-        #
-        # # 由于没有使用预训练的模型，导致初期生成的特征量没有参考性，结果就不好
-        # x_1 = F.linear(x, vars[4], vars[5])
-        # output1 = torch.sigmoid(x_1)
+        # 层数越深，需要记忆的模式就越多，AUC就越高，直接使用memory反而会对结果产生不好的影响
+        # loss 也有微妙的下降的趋势，但是auc只在0.5的附近徘徊
+        # 层数越深，需要记忆的模式越多，但是每个记忆的数量非常的少
+        # 记忆的长度有个合适的值，太短会导致视频的大部分信息的丢失，太长会导致特征基本都比较相似，需要记忆的内容就比较小
+        # 层数越深，特征之间的相似度就越小，特征量越短，
+        # 模型太多比较的次数可能会太多
+
+        # 由于没有使用预训练的模型，导致初期生成的特征量没有参考性，结果就不好
+        x_1 = F.linear(x, vars[4], vars[5])
+        output1 = torch.sigmoid(x_1)
+        return output1
+
         # self.add_anomaly_memory(inputs, output1)
 
         self.add_anomaly_memory(x, None)

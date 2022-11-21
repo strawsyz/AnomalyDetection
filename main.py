@@ -7,6 +7,7 @@ import os
 from sklearn import metrics
 import argparse
 from FFC import *
+from matplotlib import pyplot as plt
 
 
 def train(epoch):
@@ -49,6 +50,7 @@ def test_abnormal(epoch):
     model.eval()
     global best_auc
     auc = 0
+    visulization_iter = 1000
     with torch.no_grad():
         for i, (data, data2) in enumerate(zip(anomaly_test_loader, normal_test_loader)):
             inputs, gts, frames = data
@@ -78,8 +80,12 @@ def test_abnormal(epoch):
             gt_list2 = np.zeros(frames2[0])
             score_list3 = np.concatenate((score_list, score_list2), axis=0)
             gt_list3 = np.concatenate((gt_list, gt_list2), axis=0)
-
+            if i % visulization_iter:
+                plt.plot(gt_list3)
+                plt.plot(score_list3)
+                plt.show()
             fpr, tpr, thresholds = metrics.roc_curve(gt_list3, score_list3, pos_label=1)
+            print(thresholds)
             auc += metrics.auc(fpr, tpr)
 
         print('auc = {}', auc / 140)
