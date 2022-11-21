@@ -9,7 +9,7 @@ class Learner(nn.Module):
     def __init__(self, input_dim=2048, drop_p=0.0):
         super(Learner, self).__init__()
         self.classifier = nn.Sequential(
-            nn.Linear(input_dim, 512),
+            nn.Linear(input_dim, 32),
             nn.ReLU(),
             nn.Dropout(drop_p),
             nn.Linear(512, 32),
@@ -30,7 +30,7 @@ class Learner(nn.Module):
 
         # 多级memory，根据不同的layer层次存储不同的memory
 
-        self.threshold_caption_score = 0.1  # 越大，需要记忆的memory就越多，loss会有一点点减少，auc能有一点的提升
+        self.threshold_caption_score = 0.001  # 越大，需要记忆的memory就越多，loss会有一点点减少，auc能有一点的提升
         # self.threshold_memory_size = 3
         self.threshold_a_memory_size = 20
         self.threshold_n_memory_size = 20
@@ -88,9 +88,6 @@ class Learner(nn.Module):
         # 找到最相似的memory的距离，作为这个caption的特异性,这个数字越小，说明和这个caption相似的memory越少，也说明越有保存的价值
         return caption_score
 
-        # 不管有没有使用预训练的模型，结果结构都会是0.5
-        # 求
-
         # if len(caption_scores) == 1:
         #     return caption_scores[0]
         # else:
@@ -107,8 +104,10 @@ class Learner(nn.Module):
     def calculate_anomaly_score(self, caption, gt, update=True):
         if gt == -1:
             memory = self.n_memory
-        else:
+        elif gt ==1:
             memory = self.a_memory
+        else:
+            raise RuntimeError("No such memory")
 
         a_caption_score = self.calculate_feature_score(self.a_memory, caption)
         n_caption_score = self.calculate_feature_score(self.n_memory, caption)
@@ -153,11 +152,14 @@ class Learner(nn.Module):
         if len(x) % 64 == 0:
             for i in range(batch_size):
                 # 添加异常视频中可能为异常片段的记忆
-                index_a = torch.argmax(output1[i * 2 * 32: 2 * i * 32 + 32])
+                #                 index_a = torch.argmax(output1[i * 2 * 32: 2 * i * 32 + 32])
+                # index_a = torch.argmax(x[i * 2 * 32: 2 * i * 32 + 32].max(dim=1)[0])
+                index_a = torch.argmax(x[i * 2 * 32: 2 * i * 32 + 32].sum(dim=1))
+                # x[i * 2 * 32: 2 * i * 32 + 32].sum(dim=1)
                 index = 2 * i * 32 + index_a
                 caption = x[index]
                 gt = 1
-                anomaly_score = self.calculate_anomaly_score(caption, gt)
+                anomaly_score = self.calculate_anomaly_score(caption, gt, update=True)
                 # 添加正常的记忆
                 # index_n = torch.argmax(output1[2 * i * 32 + 32: 2 * i * 32 + 64])
                 # index = 2 * i * 32 + 32 + index_n
@@ -173,21 +175,28 @@ class Learner(nn.Module):
         # print(vars[1][0])
         # 不通过模型，直接使用特征量计算，loss一直在2以上 # AUC: 0.34005
         x = F.linear(x, vars[0], vars[1])  # 好像改善了一点
-        x = F.relu(x)  # 改善了0.02
-        x = F.dropout(x, self.drop_p, training=self.training)  # 改善了不少  #0.5191871161161531
-        x = F.linear(x, vars[2], vars[3])  # AUC 是0.468左右
-        x = F.dropout(x, self.drop_p, training=self.training)  # 0.44033766356249904
-        # 层数越深，需要记忆的模式就越多，AUC就越高，直接使用memory反而会对结果产生不好的影响
-        # loss 也有微妙的下降的趋势，但是auc只在0.5的附近徘徊
-        # 层数越深，需要记忆的模式越多，但是每个记忆的数量非常的少
-        # 记忆的长度有个合适的值，太短会导致视频的大部分信息的丢失，太长会导致特征基本都比较相似，需要记忆的内容就比较小
-        # 层数越深，特征之间的相似度就越小，特征量越短，
-        # 模型太多比较的次数可能会太多
 
-        # 由于没有使用预训练的模型，导致初期生成的特征量没有参考性，结果就不好
-        x_1 = F.linear(x, vars[4], vars[5])
-        output1 = torch.sigmoid(x_1)
-        self.add_anomaly_memory(x, output1)
+        # x = F.linear(x, vars[4], vars[5])
+        # return x
+
+        # inputs = torch.clone(x)
+        # x = F.relu(x)  # 改善了0.02
+        # x = F.dropout(x, self.drop_p, training=self.training)  # 改善了不少  #0.5191871161161531
+        # x = F.linear(x, vars[2], vars[3])  # AUC 是0.468左右
+        # x = F.dropout(x, self.drop_p, training=self.training)  # 0.44033766356249904
+        # # 层数越深，需要记忆的模式就越多，AUC就越高，直接使用memory反而会对结果产生不好的影响
+        # # loss 也有微妙的下降的趋势，但是auc只在0.5的附近徘徊
+        # # 层数越深，需要记忆的模式越多，但是每个记忆的数量非常的少
+        # # 记忆的长度有个合适的值，太短会导致视频的大部分信息的丢失，太长会导致特征基本都比较相似，需要记忆的内容就比较小
+        # # 层数越深，特征之间的相似度就越小，特征量越短，
+        # # 模型太多比较的次数可能会太多
+        #
+        # # 由于没有使用预训练的模型，导致初期生成的特征量没有参考性，结果就不好
+        # x_1 = F.linear(x, vars[4], vars[5])
+        # output1 = torch.sigmoid(x_1)
+        # self.add_anomaly_memory(inputs, output1)
+
+        self.add_anomaly_memory(x, None)
 
         outputs = [0 for i in range(len(x))]
 
@@ -207,8 +216,9 @@ class Learner(nn.Module):
         outputs = torch.sigmoid(outputs)
         outputs = torch.unsqueeze(outputs, dim=1)
 
+        return  outputs
         # return  output1
-        return (outputs + output1)/2  # 加了sigmoid的之后的loss不再下降, 精度会有一点的下降
+        # return (outputs + output1)/2  # 加了sigmoid的之后的loss不再下降, 精度会有一点的下降
 
 
     def parameters(self):
