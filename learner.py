@@ -30,7 +30,7 @@ class Learner(nn.Module):
         self.n_memory_0 = []
         self.a_memory_0 = []
 
-        self.memory_rate = 0.9  # 范围0-1， 按照一定概率随机记忆， 等于1的时候会记忆所有数据
+        self.memory_rate = 0.8  # 范围0-1， 按照一定概率随机记忆， 等于1的时候会记忆所有数据
 
         self.rates = [0.4, 0.6, 0.8, 0.9]
         # 多级memory，根据不同的layer层次存储不同的memory
