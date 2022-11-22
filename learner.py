@@ -30,7 +30,7 @@ class Learner(nn.Module):
         self.n_memory_0 = []
         self.a_memory_0 = []
 
-        self.memory_rate = 0.8  # 范围0-1， 按照一定概率随机记忆， 等于1的时候会记忆所有数据
+        self.memory_rate = 0.9  # 范围0-1， 按照一定概率随机记忆， 等于1的时候会记忆所有数据
 
         self.rates = [0.4, 0.6, 0.8, 0.9]
         # 多级memory，根据不同的layer层次存储不同的memory
@@ -73,8 +73,8 @@ class Learner(nn.Module):
                 a_memory.append(self.a_memory[index])
             self.threshold_a_caption_score = min(self.threshold_a_caption_score,
                                                  saliency_scores[index] / self.a_memory[0].shape[0])
-            print(f"cluster from {len(a_memory)} -> 3")
-            self.cluster_memory(torch.stack(a_memory), 3)
+            # print(f"cluster from {len(a_memory)} -> 3")
+            # self.cluster_memory(torch.stack(a_memory), 3)
             print(f" {len(self.a_memory)} -> {len(indexes)}")
             self.a_memory = a_memory
         n_memory = []
@@ -90,8 +90,8 @@ class Learner(nn.Module):
                 n_memory.append(self.n_memory[index])
             self.threshold_n_caption_score = min(self.threshold_a_caption_score,
                                                  saliency_scores[index] / self.n_memory[0].shape[0])
-            print(f"cluster from {len(n_memory)} -> 3")
-            n_memory = self.cluster_memory(torch.stack(n_memory), 3)
+            # print(f"cluster from {len(n_memory)} -> 3")
+            # n_memory = self.cluster_memory(torch.stack(n_memory), 3)
             print(f" {len(self.n_memory)} -> {len(indexes)}")
             self.n_memory = n_memory
 
