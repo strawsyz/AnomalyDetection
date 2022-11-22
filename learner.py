@@ -4,6 +4,7 @@ from torch.autograd import Variable
 from torch.nn import functional as F
 import numpy as np
 from kmeans_pytorch import kmeans
+import random
 
 
 class Learner(nn.Module):
@@ -28,6 +29,8 @@ class Learner(nn.Module):
 
         self.n_memory_0 = []
         self.a_memory_0 = []
+
+        self.memory_rate = 0.9  # 范围0-1， 按照一定概率随机记忆， 等于1的时候会记忆所有数据
 
         self.rates = [0.4, 0.6, 0.8, 0.9]
         # 多级memory，根据不同的layer层次存储不同的memory
@@ -71,7 +74,7 @@ class Learner(nn.Module):
             self.threshold_a_caption_score = min(self.threshold_a_caption_score,
                                                  saliency_scores[index] / self.a_memory[0].shape[0])
             print(f"cluster from {len(a_memory)} -> 3")
-            self.cluster_memory(a_memory, 3)
+            self.cluster_memory(torch.stack(a_memory), 3)
             print(f" {len(self.a_memory)} -> {len(indexes)}")
             self.a_memory = a_memory
         n_memory = []
@@ -88,7 +91,7 @@ class Learner(nn.Module):
             self.threshold_n_caption_score = min(self.threshold_a_caption_score,
                                                  saliency_scores[index] / self.n_memory[0].shape[0])
             print(f"cluster from {len(n_memory)} -> 3")
-            n_memory = self.cluster_memory(n_memory, 3)
+            n_memory = self.cluster_memory(torch.stack(n_memory), 3)
             print(f" {len(self.n_memory)} -> {len(indexes)}")
             self.n_memory = n_memory
 
@@ -186,11 +189,13 @@ class Learner(nn.Module):
             if len(memory) > 1:
                 caption_score = self.calculate_feature_score(memory, caption)
                 if threshold > caption_score:
-                    memory.append(caption)
+                    if random.random() < self.memory_rate:
+                        memory.append(caption)
                 # if len(memory) > self.threshold_n_memory_size
             else:
                 # caption_score = self.calculate_caption_score(memory, caption)
-                memory.append(caption)
+                if random.random() < self.memory_rate:
+                    memory.append(caption)
                 # captions.append()
         # print("a_score", a_caption_score)
         # print("n_score", n_caption_score)
@@ -224,7 +229,7 @@ class Learner(nn.Module):
         if len(x) % 64 == 0:
             for i in range(batch_size):
                 # 添加异常视频中可能为异常片段的记忆
-                #                 index_a = torch.argmax(output1[i * 2 * 32: 2 * i * 32 + 32])
+                # index_a = torch.argmax(output1[i * 2 * 32: 2 * i * 32 + 32])
                 # index_a = torch.argmax(x[i * 2 * 32: 2 * i * 32 + 32].max(dim=1)[0])
                 index_a = torch.argmax(x[i * 2 * 32: 2 * i * 32 + 32].sum(dim=1))
                 # x[i * 2 * 32: 2 * i * 32 + 32].sum(dim=1)

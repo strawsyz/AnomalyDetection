@@ -39,7 +39,7 @@ def train(epoch):
         n_iter +=1
         if n_iter % optimize_iter == 0:
             with torch.no_grad():
-                model.clear_memory(epoch=epoch)
+                # model.clear_memory(epoch=epoch)
                 model.optimize_memory()
 
     # print(model.a_memory)
