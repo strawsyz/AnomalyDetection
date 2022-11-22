@@ -39,7 +39,7 @@ def train(epoch):
         n_iter +=1
         if n_iter % optimize_iter == 0:
             with torch.no_grad():
-                model.clear_memory(0.4)
+                model.clear_memory(epoch=epoch)
                 model.optimize_memory()
 
     # print(model.a_memory)
@@ -135,7 +135,7 @@ if __name__ == '__main__':
     train_batch_size = 30
     test_batch_size = 1
     n_iter = 0
-    optimize_iter = 10
+    optimize_iter = 3
     args.lr = 0.01
     normal_train_dataset = Normal_Loader(is_train=1, modality=args.modality)
     normal_test_dataset = Normal_Loader(is_train=0, modality=args.modality)
@@ -157,16 +157,16 @@ if __name__ == '__main__':
         model = Learner(input_dim=args.input_dim, drop_p=args.drop).to(device)
 
 
-    print('Loading..')
-    state = {
-        'net': model.state_dict(),
-    }
-    if not os.path.isdir('checkpoint'):
-        os.mkdir('checkpoint')
-    model_save_path = r"./checkpoint/ckpt.pth"
-    assert os.path.exists(model_save_path)
-    state = torch.load(model_save_path)
-    model.load_state_dict(state['net'])
+    # print('Loading..')
+    # state = {
+    #     'net': model.state_dict(),
+    # }
+    # if not os.path.isdir('checkpoint'):
+    #     os.mkdir('checkpoint')
+    # model_save_path = r"./checkpoint/ckpt.pth"
+    # assert os.path.exists(model_save_path)
+    # state = torch.load(model_save_path)
+    # model.load_state_dict(state['net'])
 
     optimizer = torch.optim.Adagrad(model.parameters(), lr=args.lr, weight_decay=args.w)
     scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[25, 50])
@@ -177,7 +177,7 @@ if __name__ == '__main__':
         auc = test_abnormal(epoch)
         aucs.append(auc)
         # model.optimize_memory()
-        model.clear_memory(0.4)
+        # model.clear_memory(epoch=epoch)
 
     print(aucs)
     print("best_auc", best_auc)

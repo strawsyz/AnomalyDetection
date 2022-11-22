@@ -29,15 +29,16 @@ class Learner(nn.Module):
         self.n_memory_0 = []
         self.a_memory_0 = []
 
+        self.rates = [0.4, 0.6, 0.8, 0.9]
         # 多级memory，根据不同的layer层次存储不同的memory
 
-        self.threshold_a_caption_score = 0.3
+        self.threshold_a_caption_score = 0.1
         self.threshold_n_caption_score = 0.1  # 越大，需要记忆的memory就越多，loss会有一点点减少，auc能有一点的提升
         # self.threshold_memory_size = 3
-        self.threshold_a_memory_size = 20
-        self.threshold_n_memory_size = 20
-        self.min_a_memory_size = 10
-        self.min_n_memory_size = 10
+        self.threshold_a_memory_size = 10
+        self.threshold_n_memory_size = 10
+        self.min_a_memory_size = 5
+        self.min_n_memory_size = 5
         for i, param in enumerate(self.classifier.parameters()):
             self.vars.append(param)
 
@@ -45,7 +46,6 @@ class Learner(nn.Module):
         # data_size, dims, num_clusters = 1000, 32, 20
         # x = np.random.randn(data_size, dims) / 6
         # x = torch.from_numpy(x)
-
         cluster_ids_x, cluster_centers = kmeans(
             X=memory, num_clusters=num_clusters, distance='cosine', device=torch.device('cuda:0')
         )
@@ -68,8 +68,10 @@ class Learner(nn.Module):
             indexes = saliency_indexes[:self.min_a_memory_size]  # 挑选相似度最小的几个，让记忆的内容尽可能不相同
             for index in indexes:
                 a_memory.append(self.a_memory[index])
-            self.threshold_a_caption_score = saliency_scores[index] / self.a_memory[0].shape[0]
-
+            self.threshold_a_caption_score = min(self.threshold_a_caption_score,
+                                                 saliency_scores[index] / self.a_memory[0].shape[0])
+            print(f"cluster from {len(a_memory)} -> 3")
+            self.cluster_memory(a_memory, 3)
             print(f" {len(self.a_memory)} -> {len(indexes)}")
             self.a_memory = a_memory
         n_memory = []
@@ -83,29 +85,43 @@ class Learner(nn.Module):
             indexes = saliency_indexes[:self.min_n_memory_size]
             for index in indexes:
                 n_memory.append(self.n_memory[index])
-            self.threshold_n_caption_score = saliency_scores[index] / self.n_memory[0].shape[0]
-
+            self.threshold_n_caption_score = min(self.threshold_a_caption_score,
+                                                 saliency_scores[index] / self.n_memory[0].shape[0])
+            print(f"cluster from {len(n_memory)} -> 3")
+            n_memory = self.cluster_memory(n_memory, 3)
             print(f" {len(self.n_memory)} -> {len(indexes)}")
             self.n_memory = n_memory
 
-    def clear_memory(self, rate=None):
+    def clear_memory(self, rate=None, epoch=None):
         print("clear memory", rate)
+
+        if self.rates is not None:
+            if len(self.rates) <= epoch:
+                rate = self.rates[-1]
+            else:
+                rate = self.rates[epoch]
 
         if rate is None:
             self.a_memory = []
             self.n_memory = []
         else:
             indexes = [i for i in range(len(self.a_memory))]
-            np.random.shuffle(indexes)
-            indexes = indexes[:max(1, int(len(indexes) * rate))]
-            self.a_memory = [self.a_memory[i] for i in indexes]
-            # self.a_memory = self.a_memory[indexes]
+            new_length = max(1, int(len(indexes) * rate))
+            if new_length > self.threshold_a_memory_size:
+                np.random.shuffle(indexes)
+                print(f"{len(indexes)}->{max(1, int(len(indexes) * rate))}")
+                indexes = indexes[:max(1, int(len(indexes) * rate))]
+                self.a_memory = [self.a_memory[i] for i in indexes]
+                # self.a_memory = self.a_memory[indexes]
 
             indexes = [i for i in range(len(self.n_memory))]
-            np.random.shuffle(indexes)
-            indexes = indexes[:max(1, int(len(indexes) * rate))]
-            self.n_memory = [self.n_memory[i] for i in indexes]
-            # self.n_memory = self.self.n_memory[indexes]
+            new_length = max(1, int(len(indexes) * rate))
+            if new_length > self.threshold_n_memory_size:
+                np.random.shuffle(indexes)
+                print(f"{len(indexes)}->{max(1, int(len(indexes) * rate))}")
+                indexes = indexes[:max(1, int(len(indexes) * rate))]
+                self.n_memory = [self.n_memory[i] for i in indexes]
+                # self.n_memory = self.self.n_memory[indexes]
 
     def calculate_feature_score(self, memory, feature):
         """caption score越高，说明和其他的memory比较接近，没有保存的必要
