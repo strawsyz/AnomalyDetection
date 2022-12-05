@@ -55,13 +55,31 @@ def KMeans(x, K=10, Niter=10, verbose=True):
     return cl, c
 
 if __name__ == '__main__':
-    import random
-    a = 0
-    for i in range(100):
-        if random.random() < 0.5:
-            a+=1
-    print(a/100)
+    # import random
+    # a = 0
+    # for i in range(100):
+    #     if random.random() < 0.5:
+    #         a+=1
+    # print(a/100)
 
+    import torch
+    import clip
+    from PIL import Image
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    model, preprocess = clip.load("ViT-B/32", device=device)
+
+    image = preprocess(Image.open("CLIP.png")).unsqueeze(0).to(device)
+    text = clip.tokenize(["a diagram", "a dog", "a cat"]).to(device)
+
+    with torch.no_grad():
+        image_features = model.encode_image(image)
+        text_features = model.encode_text(text)
+
+        logits_per_image, logits_per_text = model(image, text)
+        probs = logits_per_image.softmax(dim=-1).cpu().numpy()
+
+    print("Label probs:", probs)  # prints: [[0.9927937  0.00421068 0.00299572]]
 
     # import time
     # import torch
@@ -177,3 +195,7 @@ if __name__ == '__main__':
     # #     images=images,
     # #     return_embeddings=True
     # # )  # (4, 512), (4, 512)
+
+
+    # 6105y4c5u2
+    # 3D secur ： straw63831209

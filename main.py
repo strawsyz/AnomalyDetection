@@ -172,7 +172,7 @@ if __name__ == '__main__':
     scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[25, 50])
     criterion = MIL
     aucs = []
-    for epoch in range(0, 10):
+    for epoch in range(0, 80):
         train(epoch)
         auc = test_abnormal(epoch)
         aucs.append(auc)
