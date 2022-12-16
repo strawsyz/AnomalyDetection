@@ -7,35 +7,6 @@ from sklearn import metrics
 import argparse
 from FFC import *
 
-parser = argparse.ArgumentParser(description='PyTorch MIL Training')
-parser.add_argument('--lr', default=0.001, type=float, help='learning rate')
-parser.add_argument('--w', default=0.0010000000474974513, type=float, help='weight_decay')
-parser.add_argument('--modality', default='TWO', type=str, help='modality')
-parser.add_argument('--input_dim', default=2048, type=int, help='input_dim')
-parser.add_argument('--drop', default=0.6, type=float, help='dropout_rate')
-parser.add_argument('--FFC', '-r', action='store_true',help='FFC')
-args = parser.parse_args()
-
-best_auc = 0
-
-normal_test_dataset = Normal_Loader(is_train=0, modality=args.modality)
-
-anomaly_test_dataset = Anomaly_Loader(is_train=0, modality=args.modality)
-
-normal_test_loader = DataLoader(normal_test_dataset, batch_size=1, shuffle=True)
-
-anomaly_test_loader = DataLoader(anomaly_test_dataset, batch_size=1, shuffle=True)
-
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
-
-if args.FFC:
-    model = Learner2(input_dim=args.input_dim, drop_p=args.drop).to(device)
-else:
-    model = Learner(input_dim=args.input_dim, drop_p=args.drop).to(device)
-
-checkpoint = torch.load('./checkpoint/ffc_85_45.pth')
-model.load_state_dict(checkpoint['net'])
 
 def test_abnormal():
     model.eval()
@@ -86,5 +57,34 @@ def test_abnormal():
             torch.save(state, './checkpoint/ckpt.pth')
             best_auc = auc/140
 
-test_abnormal()
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='PyTorch MIL Training')
+    parser.add_argument('--lr', default=0.001, type=float, help='learning rate')
+    parser.add_argument('--w', default=0.0010000000474974513, type=float, help='weight_decay')
+    parser.add_argument('--modality', default='TWO', type=str, help='modality')
+    parser.add_argument('--input_dim', default=2048, type=int, help='input_dim')
+    parser.add_argument('--drop', default=0.6, type=float, help='dropout_rate')
+    parser.add_argument('--FFC', '-r', action='store_true', help='FFC')
+    args = parser.parse_args()
+
+    best_auc = 0
+
+    normal_test_dataset = Normal_Loader(is_train=0, modality=args.modality)
+
+    anomaly_test_dataset = Anomaly_Loader(is_train=0, modality=args.modality)
+
+    normal_test_loader = DataLoader(normal_test_dataset, batch_size=1, shuffle=True)
+
+    anomaly_test_loader = DataLoader(anomaly_test_dataset, batch_size=1, shuffle=True)
+
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+    if args.FFC:
+        model = Learner2(input_dim=args.input_dim, drop_p=args.drop).to(device)
+    else:
+        model = Learner(input_dim=args.input_dim, drop_p=args.drop).to(device)
+
+    checkpoint = torch.load('./checkpoint/ffc_85_45.pth')
+    model.load_state_dict(checkpoint['net'])
+    test_abnormal()
 

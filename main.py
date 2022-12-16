@@ -30,17 +30,19 @@ def train(epoch):
         # grads = [x.grad for x in optimizer.param_groups[0]]
         # print(grads)
         loss.backward()
-        print(loss)
-        print("len(a_memory)", len(model.a_memory))
-        print("len(n_memory)", len(model.n_memory))
+        # print(loss)
+        print("len(a_memory): ", len(model.a_memory), "len(n_memory): ", len(model.n_memory))
+        # print("len(n_memory)", len(model.n_memory))
 
         optimizer.step()
         train_loss += loss.item()
-        n_iter +=1
-        if n_iter % optimize_iter == 0:
+        n_iter += 1
+        if args.nk and n_iter % optimize_iter == 0:
             with torch.no_grad():
+                print("start optimizing memory")
                 # model.clear_memory(epoch=epoch)
                 model.optimize_memory()
+                print("end optimizing memory")
 
     # print(model.a_memory)
     # print(model.n_memory)
@@ -48,22 +50,173 @@ def train(epoch):
     scheduler.step()
 
 
+# def test_abnormal_0(epoch):
+#     model.eval()
+#     global best_auc
+#     auc = 0
+#     visulization_iter = 200
+#     visualize_flag = False
+#     with torch.no_grad():
+#         for i, (data, data2) in enumerate(zip(anomaly_test_loader, normal_test_loader)):
+#             inputs, gts, frames = data
+#             inputs = inputs.view(-1, inputs.size(-1)).to(torch.device('cuda'))
+#             score = model(inputs)
+#             score = score.cpu().detach().numpy()
+#             score_list = np.zeros(frames[0])
+#             step = np.round(np.linspace(0, frames[0] // 16, 33))
+#
+#             for j in range(32):
+#                 score_list[int(step[j]) * 16:(int(step[j + 1])) * 16] = score[j]
+#
+#             gt_list = np.zeros(frames[0])
+#             for k in range(len(gts) // 2):
+#                 s = gts[k * 2]
+#                 e = min(gts[k * 2 + 1], frames)
+#                 gt_list[s - 1:e] = 1
+#
+#             inputs2, gts2, frames2 = data2
+#             inputs2 = inputs2.view(-1, inputs2.size(-1)).to(torch.device('cuda'))
+#             score2 = model(inputs2)
+#             score2 = score2.cpu().detach().numpy()
+#             score_list2 = np.zeros(frames2[0])
+#             step2 = np.round(np.linspace(0, frames2[0] // 16, 33))
+#             for kk in range(32):
+#                 score_list2[int(step2[kk]) * 16:(int(step2[kk + 1])) * 16] = score2[kk]
+#             gt_list2 = np.zeros(frames2[0])
+#             score_list3 = np.concatenate((score_list, score_list2), axis=0)
+#             gt_list3 = np.concatenate((gt_list, gt_list2), axis=0)
+#             if visualize_flag and i // visulization_iter:
+#                 plt.plot(gt_list3)
+#                 plt.plot(score_list3)
+#                 plt.show()
+#             fpr, tpr, thresholds = metrics.roc_curve(gt_list3, score_list3, pos_label=1)
+#             # print(thresholds)
+#             auc += metrics.auc(fpr, tpr)
+#
+#         print('auc = {}', auc / 140)
+#
+#         if best_auc < auc / 140:
+#             # ==========
+#             print("No Saving")
+#             best_auc = auc / 140
+#             # ==========
+#
+#             # print('Saving..')
+#             # state = {
+#             #     'net': model.state_dict(),
+#             # }
+#             # if not os.path.isdir('checkpoint'):
+#             #     os.mkdir('checkpoint')
+#             # torch.save(state, './checkpoint/ckpt.pth')
+#             # best_auc = auc / 140
+#     return auc / 140
+
+
+# def test_abnormal(epoch):
+#     model.eval()
+#     global best_auc
+#     auc = 0
+#     visulization_iter = 200
+#     with torch.no_grad():
+#         for i, (data, data2) in enumerate(zip(anomaly_test_loader, normal_test_loader)):
+#             inputs, gts, frames = data
+#             inputs = inputs.view(-1, inputs.size(-1)).to(torch.device('cuda'))
+#             score = model(inputs)
+#             score = score.cpu().detach().numpy()
+#             score_list = np.zeros(frames[0])
+#             step = np.round(np.linspace(0, frames[0] // 16, 33))
+#             num_frames = frames[0]
+#             # print(num_frames)
+#             for idx, i in enumerate(range(0, num_frames - 16, 16)):
+#                 score_list[i:i + 16] = score[idx]
+#             score_list[i + 16:] = score[idx]
+#             assert score_list[-1] != 0
+#
+#             # for j in range(32):
+#             #     score_list[int(step[j]) * 16:(int(step[j + 1])) * 16] = score[j]
+#
+#             gt_list = np.zeros(frames[0])
+#             for k in range(len(gts) // 2):
+#                 s = gts[k * 2]
+#                 e = min(gts[k * 2 + 1], frames)
+#                 gt_list[s - 1:e] = 1
+#
+#             inputs2, gts2, frames2 = data2
+#             inputs2 = inputs2.view(-1, inputs2.size(-1)).to(torch.device('cuda'))
+#             score2 = model(inputs2)
+#             score2 = score2.cpu().detach().numpy()
+#             score_list2 = np.zeros(frames2[0])
+#
+#             # step2 = np.round(np.linspace(0, frames2[0] // 16, 33))
+#             # for kk in range(32):
+#             #     score_list2[int(step2[kk]) * 16:(int(step2[kk + 1])) * 16] = score2[kk]
+#             num_frames = frames2[0]
+#             for idx, i in enumerate(range(0, num_frames - 16, 16)):
+#                 score_list2[i:i + 16] = score2[idx]
+#             score_list2[i + 16:] = score2[idx]
+#             assert score_list2[-1] != 0
+#
+#             gt_list2 = np.zeros(frames2[0])
+#             score_list3 = np.concatenate((score_list, score_list2), axis=0)
+#             gt_list3 = np.concatenate((gt_list, gt_list2), axis=0)
+#             fpr, tpr, thresholds = metrics.roc_curve(gt_list3, score_list3, pos_label=1)
+#             sample_auc = metrics.auc(fpr, tpr)
+#             auc += sample_auc
+#             if i // visulization_iter:
+#                 plt.plot(gt_list3)
+#                 plt.plot(score_list3)
+#                 plt.title("auc: " + str(sample_auc))
+#                 plt.show()
+#             # print(thresholds)
+#         auc = auc / 140
+#         print('auc = {}', auc)
+#
+#         if best_auc < auc:
+#             # ==========
+#             print("No Saving")
+#             best_auc = auc
+#             # ==========
+#
+#             # print('Saving..')
+#             # state = {
+#             #     'net': model.state_dict(),
+#             # }
+#             # if not os.path.isdir('checkpoint'):
+#             #     os.mkdir('checkpoint')
+#             # torch.save(state, './checkpoint/ckpt.pth')
+#             # best_auc = auc / 140
+#     return auc
+
 def test_abnormal(epoch):
+    """对所有的视频一起进行计算auc"""
     model.eval()
     global best_auc
     auc = 0
-    visulization_iter = 200
+    visualization = 200
+    all_pred = []
+    all_gt = []
     with torch.no_grad():
         for i, (data, data2) in enumerate(zip(anomaly_test_loader, normal_test_loader)):
             inputs, gts, frames = data
             inputs = inputs.view(-1, inputs.size(-1)).to(torch.device('cuda'))
             score = model(inputs)
             score = score.cpu().detach().numpy()
-            score_list = np.zeros(frames[0])
-            step = np.round(np.linspace(0, frames[0] // 16, 33))
+            num_frames = frames[0]
+            score_list = np.zeros(num_frames)
+            # print(num_frames)
+            for idx, i in enumerate(range(0, num_frames - 16, 16)):
+                assert len(score_list) > i + 16, "len of list:" + str(len(score_list)) + ", index: " + str(i + 16)
+                # if i + 16 == len(score_list):
+                score_list[i:] = score[idx]
+                # else:
+                #     score_list[i:i + 16] = score[idx]
 
-            for j in range(32):
-                score_list[int(step[j]) * 16:(int(step[j + 1])) * 16] = score[j]
+            score_list[i + 16:] = score[idx]
+            assert score_list[-1] != 0, score_list
+
+            # step = np.round(np.linspace(0, frames[0] // 16, 33))
+            # for j in range(32):
+            #     score_list[int(step[j]) * 16:(int(step[j + 1])) * 16] = score[j]
 
             gt_list = np.zeros(frames[0])
             for k in range(len(gts) // 2):
@@ -76,26 +229,45 @@ def test_abnormal(epoch):
             score2 = model(inputs2)
             score2 = score2.cpu().detach().numpy()
             score_list2 = np.zeros(frames2[0])
-            step2 = np.round(np.linspace(0, frames2[0] // 16, 33))
-            for kk in range(32):
-                score_list2[int(step2[kk]) * 16:(int(step2[kk + 1])) * 16] = score2[kk]
+
+            # step2 = np.round(np.linspace(0, frames2[0] // 16, 33))
+            # for kk in range(32):
+            #     score_list2[int(step2[kk]) * 16:(int(step2[kk + 1])) * 16] = score2[kk]
+            num_frames = frames2[0]
+            for idx, i in enumerate(range(0, num_frames - 16, 16)):
+                score_list2[i:i + 16] = score2[idx]
+            score_list2[i + 16:] = score2[idx]
+            assert score_list2[-1] != 0
+
             gt_list2 = np.zeros(frames2[0])
             score_list3 = np.concatenate((score_list, score_list2), axis=0)
             gt_list3 = np.concatenate((gt_list, gt_list2), axis=0)
-            if i // visulization_iter:
+
+            all_gt.append(gt_list3)
+            all_pred.append(score_list3)
+
+            fpr, tpr, thresholds = metrics.roc_curve(gt_list3, score_list3, pos_label=1)
+            sample_auc = metrics.auc(fpr, tpr)
+            auc += sample_auc
+            if i // visualization:
                 plt.plot(gt_list3)
                 plt.plot(score_list3)
-                plt.show()
-            fpr, tpr, thresholds = metrics.roc_curve(gt_list3, score_list3, pos_label=1)
+                plt.title("auc: " + str(sample_auc))
+            plt.show()
             # print(thresholds)
-            auc += metrics.auc(fpr, tpr)
-
-        print('auc = {}', auc / 140)
-
-        if best_auc < auc / 140:
+        auc_video = auc / 140
+        print('auc_video = {}', auc_video)
+        all_pred = np.concatenate(all_pred, axis=0)
+        all_gt = np.concatenate(all_gt, axis=0)
+        print("len of pred", len(all_pred))
+        print("len of gt", len(all_gt))
+        fpr, tpr, thresholds = metrics.roc_curve(all_gt, all_pred, pos_label=1)
+        auc = metrics.auc(fpr, tpr)
+        print('auc = {}', auc)
+        if best_auc < auc:
             # ==========
             print("No Saving")
-            best_auc = auc/140
+            best_auc = auc
             # ==========
 
             # print('Saving..')
@@ -106,7 +278,8 @@ def test_abnormal(epoch):
             #     os.mkdir('checkpoint')
             # torch.save(state, './checkpoint/ckpt.pth')
             # best_auc = auc / 140
-    return auc / 140
+    return auc
+
 
 def set_seed(random_state: int = 0):
     if random_state is not None:
@@ -121,31 +294,46 @@ def set_seed(random_state: int = 0):
 
 
 if __name__ == '__main__':
+    import warnings
+
+    warnings.filterwarnings("ignore")
+
     parser = argparse.ArgumentParser(description='PyTorch MIL Training')
-    parser.add_argument('--lr', default=0.001, type=float, help='learning rate')
+    parser.add_argument('--lr', default=0.1, type=float, help='learning rate')
     parser.add_argument('--w', default=0.0010000000474974513, type=float, help='weight_decay')
     parser.add_argument('--modality', default='TWO', type=str, help='modality')
-    parser.add_argument('--input_dim', default=2048, type=int, help='input_dim')
+    parser.add_argument('--input_dim', default=512, type=int, help='input_dim')
+    parser.add_argument('--epoch', default=80, type=int, help='max_epoch')
+    parser.add_argument('--train_batch_size', default=30, type=int, help='train_batch_size')
+    parser.add_argument('--test_batch_size', default=1, type=int, help='test_batch_size')
+    parser.add_argument('--optimize_iter', default=3, type=int, help='optimize_iter')
+    parser.add_argument('--num_key_memory', default=10, type=int, help='num_key_memory')
+    parser.add_argument('--max_memory_size', default=15, type=int, help='max_memory_size')
+    parser.add_argument('--memory_rate', default=0.5, type=float, help='memory_rate')
+    parser.add_argument('--clear_rate', default=0.3, type=float, help='clear_rate')
+    # 越大，越容易增加新的数据
+    parser.add_argument('--threshold_caption_score', default=1.0, type=float, help='threshold_caption_score')
     parser.add_argument('--drop', default=0.6, type=float, help='dropout_rate')
     parser.add_argument('--FFC', '-r', action='store_true', help='FFC')
+    parser.add_argument('--nk', action='store_false', help='nk')
     args = parser.parse_args()
 
     set_seed(0)
-    best_auc = 0
-    train_batch_size = 30
-    test_batch_size = 1
-    n_iter = 0
-    optimize_iter = 3
-    args.lr = 0.01
-    normal_train_dataset = Normal_Loader(is_train=1, modality=args.modality)
-    normal_test_dataset = Normal_Loader(is_train=0, modality=args.modality)
 
-    anomaly_train_dataset = Anomaly_Loader(is_train=1, modality=args.modality)
-    anomaly_test_dataset = Anomaly_Loader(is_train=0, modality=args.modality)
+    best_auc = 0
+    n_iter = 0
+
+    train_batch_size = args.train_batch_size
+    test_batch_size = args.test_batch_size
+    optimize_iter = args.optimize_iter
+
+    normal_train_dataset = Normal_Loader(is_train=1, modality=args.modality, feature_dim=args.input_dim)
+    normal_test_dataset = Normal_Loader(is_train=0, modality=args.modality, feature_dim=args.input_dim)
+    anomaly_train_dataset = Anomaly_Loader(is_train=1, modality=args.modality, feature_dim=args.input_dim)
+    anomaly_test_dataset = Anomaly_Loader(is_train=0, modality=args.modality, feature_dim=args.input_dim)
 
     normal_train_loader = DataLoader(normal_train_dataset, batch_size=train_batch_size, shuffle=True)
     normal_test_loader = DataLoader(normal_test_dataset, batch_size=test_batch_size, shuffle=False)
-
     anomaly_train_loader = DataLoader(anomaly_train_dataset, batch_size=train_batch_size, shuffle=True)
     anomaly_test_loader = DataLoader(anomaly_test_dataset, batch_size=test_batch_size, shuffle=False)
 
@@ -154,8 +342,10 @@ if __name__ == '__main__':
     if args.FFC:
         model = Learner2(input_dim=args.input_dim, drop_p=args.drop).to(device)
     else:
-        model = Learner(input_dim=args.input_dim, drop_p=args.drop).to(device)
-
+        # model = Learner(input_dim=args.input_dim, drop_p=args.drop).to(device)
+        model = Learner(input_dim=args.input_dim, drop_p=args.drop, memory_rate=args.memory_rate,
+                        num_key_memory=args.num_key_memory, max_memory_size=args.max_memory_size,
+                        threshold_caption_score=args.threshold_caption_score, nk=args.nk).to(device)
 
     # print('Loading..')
     # state = {
@@ -172,36 +362,12 @@ if __name__ == '__main__':
     scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[25, 50])
     criterion = MIL
     aucs = []
-    for epoch in range(0, 80):
+    for epoch in range(0, args.epoch):
         train(epoch)
         auc = test_abnormal(epoch)
         aucs.append(auc)
         # model.optimize_memory()
-        # model.clear_memory(epoch=epoch)
-
-    print(aucs)
+        model.clear_memory(rate=args.clear_rate, epoch=epoch)
+        print("best_auc", best_auc)
+    # print(aucs)
     print("best_auc", best_auc)
-# 0.8213366706019152
-
-# Epoch: 74
-# loss = 0.4205668259550024
-# auc = {} 0.829994200302661
-
-# Epoch: 74
-# loss = 0.4456628836967327
-# auc = {} 0.8278700375003192
-
-# Abuse 1
-# Arrest 2
-# Arson 3
-# Assault 4
-# Burglary 5
-# Explosion 6
-# Fighting 7
-# Normal_Videos_event 8
-# RoadAccidents 9
-# Robbery 10
-# Shooting 11
-# Shoplifting 12
-# Stealing 13
-# Vandalism 14

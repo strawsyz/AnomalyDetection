@@ -9,6 +9,8 @@
 import numpy as np
 from matplotlib import pyplot as plt
 import torch
+
+
 def KMeans(x, K=10, Niter=10, verbose=True):
     """Implements Lloyd's algorithm for the Euclidean metric."""
 
@@ -25,7 +27,6 @@ def KMeans(x, K=10, Niter=10, verbose=True):
     # - cl is the (N,) vector of class labels
     # - c  is the (K, D) cloud of cluster centroids
     for i in range(Niter):
-
         # E step: assign points to the closest cluster -------------------------
         D_ij = ((x_i - c_j) ** 2).sum(-1)  # (N, K) symbolic squared distances
         cl = D_ij.argmin(dim=1).long().view(-1)  # Points -> Nearest cluster
@@ -54,6 +55,7 @@ def KMeans(x, K=10, Niter=10, verbose=True):
 
     return cl, c
 
+
 if __name__ == '__main__':
     # import random
     # a = 0
@@ -62,24 +64,36 @@ if __name__ == '__main__':
     #         a+=1
     # print(a/100)
 
-    import torch
-    import clip
-    from PIL import Image
+    score_list = np.zeros(32)
+    # step = np.round(np.linspace(0, 32 // 16, 33))
+    num_frames = 32
+    # print(num_frames)
+    score_list = [i for i in range(num_frames)]
+    for idx, i in enumerate(range(0, num_frames - 15, 16)):
+        # assert (len(score_list) >= i + 16), "len of list:" + str(len(score_list)) + ", index: " + str(i + 16)
+        if i + 16 == len(score_list):
+            print(score_list[i:])
+        else:
+            print(score_list[i:min((i + 16), len(score_list) - 1)])
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    model, preprocess = clip.load("ViT-B/32", device=device)
-
-    image = preprocess(Image.open("CLIP.png")).unsqueeze(0).to(device)
-    text = clip.tokenize(["a diagram", "a dog", "a cat"]).to(device)
-
-    with torch.no_grad():
-        image_features = model.encode_image(image)
-        text_features = model.encode_text(text)
-
-        logits_per_image, logits_per_text = model(image, text)
-        probs = logits_per_image.softmax(dim=-1).cpu().numpy()
-
-    print("Label probs:", probs)  # prints: [[0.9927937  0.00421068 0.00299572]]
+            # import torch
+    # import clip
+    # from PIL import Image
+    #
+    # device = "cuda" if torch.cuda.is_available() else "cpu"
+    # model, preprocess = clip.load("ViT-B/32", device=device)
+    #
+    # image = preprocess(Image.open("CLIP.png")).unsqueeze(0).to(device)
+    # text = clip.tokenize(["a diagram", "a dog", "a cat"]).to(device)
+    #
+    # with torch.no_grad():
+    #     image_features = model.encode_image(image)
+    #     text_features = model.encode_text(text)
+    #
+    #     logits_per_image, logits_per_text = model(image, text)
+    #     probs = logits_per_image.softmax(dim=-1).cpu().numpy()
+    #
+    # print("Label probs:", probs)  # prints: [[0.9927937  0.00421068 0.00299572]]
 
     # import time
     # import torch
@@ -195,7 +209,6 @@ if __name__ == '__main__':
     # #     images=images,
     # #     return_embeddings=True
     # # )  # (4, 512), (4, 512)
-
 
     # 6105y4c5u2
     # 3D secur ： straw63831209
