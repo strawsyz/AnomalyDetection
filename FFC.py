@@ -21,6 +21,7 @@ class Learner2(nn.Module):
 
 
     def forward(self, x):
+        x = x.float()
         x1 = self.relu2(x)
 
         out = self.fc5(self.relu(self.fc4((self.relu(self.fc3(self.dropout(self.relu(self.fc2(self.relu(self.fc1(x)))))))))))

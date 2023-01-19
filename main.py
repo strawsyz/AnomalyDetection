@@ -1,18 +1,23 @@
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
 from learner import Learner
-from loss import *
+from loss import MIL, post_process, save_result_2
 from dataset import *
 import os
 from sklearn import metrics
 import argparse
-from FFC import *
+from my_learner2 import Learner2
 from matplotlib import pyplot as plt
+
+from transformer import TFLeaner
 
 
 def train(epoch):
     print('\nEpoch: %d' % epoch)
     global n_iter
+    first_flag = True
+    iter_in_epoch =0
+    first_optimize_iter = args.first_optimize_iter
     model.train()
     train_loss = 0
     correct = 0
@@ -25,24 +30,31 @@ def train(epoch):
         batch_size = inputs.shape[0]
         inputs = inputs.view(-1, inputs.size(-1)).to(device)
         outputs = model(inputs)
-        loss = criterion(outputs, batch_size)
+        loss = criterion(outputs, batch_size, args=args)
         optimizer.zero_grad()
         # grads = [x.grad for x in optimizer.param_groups[0]]
         # print(grads)
         loss.backward()
         # print(loss)
-        print("len(a_memory): ", len(model.a_memory), "len(n_memory): ", len(model.n_memory))
-        # print("len(n_memory)", len(model.n_memory))
-
         optimizer.step()
         train_loss += loss.item()
         n_iter += 1
-        if args.nk and n_iter % optimize_iter == 0:
-            with torch.no_grad():
-                print("start optimizing memory")
-                # model.clear_memory(epoch=epoch)
-                model.optimize_memory()
-                print("end optimizing memory")
+        iter_in_epoch +=1
+        if args.nk:
+            print("len(a_memory): ", len(model.a_memory), "len(n_memory): ", len(model.n_memory))
+
+            if first_flag and iter_in_epoch == first_optimize_iter:
+                with torch.no_grad():
+                    print("start optimizing memory")
+                    model.optimize_memory()
+                    print("end optimizing memory")
+                first_flag = False
+
+            if n_iter % optimize_iter == 0 and not first_flag:
+                with torch.no_grad():
+                    print("start optimizing memory")
+                    model.optimize_memory()
+                    print("end optimizing memory")
 
     # print(model.a_memory)
     # print(model.n_memory)
@@ -187,59 +199,70 @@ def train(epoch):
 #             # best_auc = auc / 140
 #     return auc
 
-def test_abnormal(epoch):
+def test_abnormal(epoch, patient, args):
     """对所有的视频一起进行计算auc"""
     model.eval()
     global best_auc
     auc = 0
-    visualization = 200
+    visualization = 20
     all_pred = []
     all_gt = []
     with torch.no_grad():
         for i, (data, data2) in enumerate(zip(anomaly_test_loader, normal_test_loader)):
-            inputs, gts, frames = data
+            inputs, gts, frames, video_names = data
+            anomaly_video_name = video_names[0]
             inputs = inputs.view(-1, inputs.size(-1)).to(torch.device('cuda'))
             score = model(inputs)
             score = score.cpu().detach().numpy()
             num_frames = frames[0]
             score_list = np.zeros(num_frames)
             # print(num_frames)
-            for idx, i in enumerate(range(0, num_frames - 16, 16)):
-                assert len(score_list) > i + 16, "len of list:" + str(len(score_list)) + ", index: " + str(i + 16)
-                # if i + 16 == len(score_list):
-                score_list[i:] = score[idx]
-                # else:
-                #     score_list[i:i + 16] = score[idx]
 
-            score_list[i + 16:] = score[idx]
-            assert score_list[-1] != 0, score_list
+            # if args.input_dim == 512:
+            #     for idx, i in enumerate(range(0, num_frames - 16, 16)):
+            #         assert len(score_list) > i + 16, "len of list:" + str(len(score_list)) + ", index: " + str(i + 16)
+            #         # if i + 16 == len(score_list):
+            #         score_list[i:] = score[idx]
+            #         # else:
+            #         #     score_list[i:i + 16] = score[idx]
+            #
+            #     score_list[i + 16:] = score[idx]
+            #     assert score_list[-1] != 0, score_list
+            # else:
+            step = np.round(np.linspace(0, frames[0] // 16, 33))
+            for j in range(32):
+                score_list[int(step[j]) * 16:(int(step[j + 1])) * 16] = score[j]
 
-            # step = np.round(np.linspace(0, frames[0] // 16, 33))
-            # for j in range(32):
-            #     score_list[int(step[j]) * 16:(int(step[j + 1])) * 16] = score[j]
-
+            # 分别处理各自的分数
             gt_list = np.zeros(frames[0])
             for k in range(len(gts) // 2):
                 s = gts[k * 2]
                 e = min(gts[k * 2 + 1], frames)
                 gt_list[s - 1:e] = 1
+            # save_result(anomaly_video_name, score_list, gt_list)
 
-            inputs2, gts2, frames2 = data2
+            inputs2, gts2, frames2, video_names2 = data2
+            normal_video_name = video_names2[0]
             inputs2 = inputs2.view(-1, inputs2.size(-1)).to(torch.device('cuda'))
             score2 = model(inputs2)
             score2 = score2.cpu().detach().numpy()
             score_list2 = np.zeros(frames2[0])
 
-            # step2 = np.round(np.linspace(0, frames2[0] // 16, 33))
-            # for kk in range(32):
-            #     score_list2[int(step2[kk]) * 16:(int(step2[kk + 1])) * 16] = score2[kk]
-            num_frames = frames2[0]
-            for idx, i in enumerate(range(0, num_frames - 16, 16)):
-                score_list2[i:i + 16] = score2[idx]
-            score_list2[i + 16:] = score2[idx]
-            assert score_list2[-1] != 0
+            # if args.input_dim == 512:
+            #     num_frames = frames2[0]
+            #     for idx, i in enumerate(range(0, num_frames - 16, 16)):
+            #         score_list2[i:i + 16] = score2[idx]
+            #     score_list2[i + 16:] = score2[idx]
+            #     assert score_list2[-1] != 0
+            # else:
+            step2 = np.round(np.linspace(0, frames2[0] // 16, 33))
+            for kk in range(32):
+                score_list2[int(step2[kk]) * 16:(int(step2[kk + 1])) * 16] = score2[kk]
 
             gt_list2 = np.zeros(frames2[0])
+            # save_result(normal_video_name, score_list2, gt_list2)
+
+            save_result_2(anomaly_video_name, normal_video_name, score_list, gt_list, score_list2, gt_list2)
             score_list3 = np.concatenate((score_list, score_list2), axis=0)
             gt_list3 = np.concatenate((gt_list, gt_list2), axis=0)
 
@@ -249,18 +272,30 @@ def test_abnormal(epoch):
             fpr, tpr, thresholds = metrics.roc_curve(gt_list3, score_list3, pos_label=1)
             sample_auc = metrics.auc(fpr, tpr)
             auc += sample_auc
-            if i // visualization:
-                plt.plot(gt_list3)
-                plt.plot(score_list3)
-                plt.title("auc: " + str(sample_auc))
-            plt.show()
+            # if sample_auc > 0.9:
+            #     # print(video_names, video_names2)
+            #     plt.plot(gt_list3, label='gt')
+            #     plt.plot(score_list3, label='prediction')
+            #
+            #     # 　画分界线
+            #     plt.axvline(len(score_list), 1.0, 0.0, color='green')
+            #     plt.text(0, 0.5, anomaly_video_name)
+            #     plt.text(0, 1, normal_video_name)
+            #     plt.title("auc: {}".format(sample_auc))
+            #     # plt.title("auc: {},\n {}, \n{}".format(sample_auc, anomaly_video_name, normal_video_name))
+            #     plt.legend()
+            #     plt.xlabel('frames')
+            #     plt.ylabel('anomaly score')
+            #     plt.show()
             # print(thresholds)
         auc_video = auc / 140
         print('auc_video = {}', auc_video)
         all_pred = np.concatenate(all_pred, axis=0)
         all_gt = np.concatenate(all_gt, axis=0)
-        print("len of pred", len(all_pred))
-        print("len of gt", len(all_gt))
+        # print("len of pred", len(all_pred))
+        # print("len of gt", len(all_gt))
+        # tmp_all_gt = all_gt.copy()
+        # all_gt = post_process(tmp_all_gt)
         fpr, tpr, thresholds = metrics.roc_curve(all_gt, all_pred, pos_label=1)
         auc = metrics.auc(fpr, tpr)
         print('auc = {}', auc)
@@ -269,6 +304,7 @@ def test_abnormal(epoch):
             print("No Saving")
             best_auc = auc
             # ==========
+            patient = args.patient
 
             # print('Saving..')
             # state = {
@@ -278,7 +314,14 @@ def test_abnormal(epoch):
             #     os.mkdir('checkpoint')
             # torch.save(state, './checkpoint/ckpt.pth')
             # best_auc = auc / 140
-    return auc
+        else:
+            patient = patient - 1
+            print("patient decrease", patient)
+            if patient == 0:
+                print("Easy stop! best auc: ", best_auc)
+                import sys
+                sys.exit()
+    return auc, patient
 
 
 def set_seed(random_state: int = 0):
@@ -299,7 +342,7 @@ if __name__ == '__main__':
     warnings.filterwarnings("ignore")
 
     parser = argparse.ArgumentParser(description='PyTorch MIL Training')
-    parser.add_argument('--lr', default=0.1, type=float, help='learning rate')
+    parser.add_argument('--lr', default=0.01, type=float, help='learning rate')
     parser.add_argument('--w', default=0.0010000000474974513, type=float, help='weight_decay')
     parser.add_argument('--modality', default='TWO', type=str, help='modality')
     parser.add_argument('--input_dim', default=512, type=int, help='input_dim')
@@ -309,13 +352,24 @@ if __name__ == '__main__':
     parser.add_argument('--optimize_iter', default=3, type=int, help='optimize_iter')
     parser.add_argument('--num_key_memory', default=10, type=int, help='num_key_memory')
     parser.add_argument('--max_memory_size', default=15, type=int, help='max_memory_size')
+    parser.add_argument('--embedding_dim', default=512, type=int, help='embedding_dim')
+    parser.add_argument('--n_layer', default=2, type=int, help='n_layer')
+    parser.add_argument('--n_head', default=1, type=int, help='n_head')
     parser.add_argument('--memory_rate', default=0.5, type=float, help='memory_rate')
-    parser.add_argument('--clear_rate', default=0.3, type=float, help='clear_rate')
+    parser.add_argument('--clear_rate', default=0.5, type=float, help='clear_rate')  # 越小删除的就越多,就算变为0，也会留下一个memory
     # 越大，越容易增加新的数据
     parser.add_argument('--threshold_caption_score', default=1.0, type=float, help='threshold_caption_score')
     parser.add_argument('--drop', default=0.6, type=float, help='dropout_rate')
     parser.add_argument('--FFC', '-r', action='store_true', help='FFC')
-    parser.add_argument('--nk', action='store_false', help='nk')
+    parser.add_argument('--tf', action='store_true', help='transformer')
+    parser.add_argument('--nk', default=False, action='store_true', help='nk')
+    parser.add_argument('--update_threshold', default=False, action='store_true', help='update_threshold')
+    parser.add_argument('--patient', default=10, type=int, help='patient')
+    parser.add_argument('--a_topk', default=1, type=int, help='add top k anomaly into anomaly memory space')
+    parser.add_argument('--first_optimize_iter', default=3, type=int, help='first_optimize_iter')
+
+    parser.add_argument('--loss_topk', default=2, type=int, help='loss_topk')
+
     args = parser.parse_args()
 
     set_seed(0)
@@ -326,6 +380,16 @@ if __name__ == '__main__':
     train_batch_size = args.train_batch_size
     test_batch_size = args.test_batch_size
     optimize_iter = args.optimize_iter
+    patient = args.patient
+
+    if args.input_dim == 512:
+        print("Using CLIP feature")
+    elif args.input_dim == 2048:
+        print("Using I3D feature")
+    elif args.input_dim == 2560:
+        print("Using I3D+CLIP feature")
+    else:
+        raise RuntimeError("Not Support such dataset")
 
     normal_train_dataset = Normal_Loader(is_train=1, modality=args.modality, feature_dim=args.input_dim)
     normal_test_dataset = Normal_Loader(is_train=0, modality=args.modality, feature_dim=args.input_dim)
@@ -341,11 +405,13 @@ if __name__ == '__main__':
 
     if args.FFC:
         model = Learner2(input_dim=args.input_dim, drop_p=args.drop).to(device)
+    elif args.tf:
+        model = TFLeaner(args.input_dim, args.embedding_dim, args.n_layer, args.n_head, 0).to(device)
     else:
         # model = Learner(input_dim=args.input_dim, drop_p=args.drop).to(device)
         model = Learner(input_dim=args.input_dim, drop_p=args.drop, memory_rate=args.memory_rate,
                         num_key_memory=args.num_key_memory, max_memory_size=args.max_memory_size,
-                        threshold_caption_score=args.threshold_caption_score, nk=args.nk).to(device)
+                        threshold_caption_score=args.threshold_caption_score, nk=args.nk, args=args).to(device)
 
     # print('Loading..')
     # state = {
@@ -364,10 +430,29 @@ if __name__ == '__main__':
     aucs = []
     for epoch in range(0, args.epoch):
         train(epoch)
-        auc = test_abnormal(epoch)
+        auc, patient = test_abnormal(epoch, patient, args)
         aucs.append(auc)
-        # model.optimize_memory()
-        model.clear_memory(rate=args.clear_rate, epoch=epoch)
+        if args.nk:
+            model.clear_memory(rate=args.clear_rate, epoch=epoch)
         print("best_auc", best_auc)
     # print(aucs)
     print("best_auc", best_auc)
+    print(aucs)
+    plt.plot(aucs)
+    plt.show()
+# 0.8180977589971383  post-processed
+# 0.8181509890961944　　no post-processed better
+
+
+# 0.8254352179071174 output = attn + output.mean(dim=2)
+# 0.5008233030470083 output = attn
+# 0.8196318089303685
+# 0.8254352179071174  output= output /2
+# output = 2 * attn + output.mean(dim=2)  0.8190337505714058
+# 　0.8221853467803804　　 attn + output.mean(dim=2) * 10
+
+# 0.8263817288643429
+# 0.8250175510179918
+
+# 0.8353636423009376 2048 128
+# 0.8354656209751689　2048 256
