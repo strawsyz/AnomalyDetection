@@ -48,11 +48,11 @@ class Learner(nn.Module):
             )
         else:
             raise RuntimeError("No such input dim")
-        self.input_dim = input_dim
-        self.drop_p = drop_p
+        self.input_dim = args.input_dim
+        self.drop_p = args.drop_p
         self.weight_init()
         self.vars = nn.ParameterList()
-        self.nk = nk
+        self.nk = args.nk
 
         self.n_memory = []
         self.a_memory = []
@@ -60,23 +60,24 @@ class Learner(nn.Module):
         self.n_memory_0 = []
         self.a_memory_0 = []
 
-        self.memory_rate = memory_rate  # 范围0-1， 按照一定概率随机记忆， 等于1的时候会记忆所有数据
+        self.memory_rate = args.memory_rate  # 范围0-1， 按照一定概率随机记忆， 等于1的时候会记忆所有数据
         self.a_topk = args.a_topk
 
         self.rates = [0.4, 0.6, 0.8, 0.9]
         # 多级memory，根据不同的layer层次存储不同的memory
 
-        self.threshold_a_caption_score = threshold_caption_score
-        self.threshold_n_caption_score = threshold_caption_score  # 越大，需要记忆的memory就越多，loss会有一点点减少，auc能有一点的提升
+        self.threshold_a_caption_score = args.threshold_caption_score
+        self.threshold_n_caption_score = args.threshold_caption_score  # 越大，需要记忆的memory就越多，loss会有一点点减少，auc能有一点的提升
         # self.threshold_memory_size = 3
-        self.threshold_a_memory_size = max_memory_size
-        self.threshold_n_memory_size = max_memory_size
-        self.min_a_memory_size = num_key_memory
-        self.min_n_memory_size = num_key_memory
-        self.topk_score = 3
-        self.optimize_topk = 1
+        self.threshold_a_memory_size = args.max_memory_size
+        self.threshold_n_memory_size = args.max_memory_size
+        self.min_a_memory_size = args.num_key_memory
+        self.min_n_memory_size = args.num_key_memory
+        self.topk_score = args.topk_score
+        self.optimize_topk = 0
         self.update_threshold = args.update_threshold
-        self.tf = Transformer(32, 32, 6, 8, 0)
+        self.tf = Transformer(args.input_dim, args.embedding_dim, args.n_layer, args.n_head, 0)
+        self.reducer_4_tf = nn.Linear(args.embedding_dim, 32)
 
         for i, param in enumerate(self.classifier.parameters()):
             self.vars.append(param)
@@ -292,8 +293,6 @@ class Learner(nn.Module):
             else:
                 if random.random() < self.memory_rate:
                     memory.append(caption)
-        # print("a_score", a_caption_score)
-        # print("n_score", n_caption_score)
         return a_caption_score - n_caption_score
 
     def add_anomaly_memory(self, x, output1):
@@ -330,57 +329,61 @@ class Learner(nn.Module):
         if vars is None:
             vars = self.vars
 
-        # feat_magnitudes = torch.norm(x, p=2, dim=2)
+        # feat_magnitudes = torch.norm(x, p=2, dim=2)  # 可以用于CLIP提取的参数
         # print(feat_magnitudes.shape)  # 10, 28  # 640, 28
-        # print(vars[0][0][-10:])
-        # print(vars[1][0])
-        # 不通过模型，直接使用特征量计算，loss一直在2以上 # AUC: 0.34005
-        if self.input_dim == 512:
-            x = x.float()
-            x = F.linear(x, vars[0], vars[1])
-            # 增加一层
-            x = F.relu(x)
-            # x = F.softmax(x)
-            x = F.dropout(x, self.drop_p, training=self.training)
-            x = F.linear(x, vars[2], vars[3])
-        elif self.input_dim == 2048:
-            # x = x.float()
-            x = F.linear(x, vars[0], vars[1])
-            x = F.relu(x)
-            x = F.dropout(x, self.drop_p, training=self.training)
-            x = F.linear(x, vars[2], vars[3])
-        elif self.input_dim == 2560:
-            x = x.float()
-            x1 = x[:, :512]
-            x2 = x[:, 512:]
-            x1 = F.linear(x1, vars[0], vars[1])
-            x2 = F.linear(x2, vars[2], vars[3])
-            x2 = F.relu(x2)
-            x2 = F.dropout(x2, self.drop_p, training=self.training)
-            x2 = F.linear(x2, vars[4], vars[5])
-            x = x1 + x2
-        else:
-            raise RuntimeError("No such Runtime Error")
 
-        # --input_dim 2048 --lr 0.01 --tf0.8383009988878762
-        # batch_size = int(x.shape[0] / 64)
-        # if self.training: #batch_size > 0:
-        #     x = torch.reshape(x, (batch_size, 64, 32))
-        #     a_x = torch.reshape(x, (batch_size, 64, 32))[:, :32, :]
-        #     n_x = torch.reshape(x, (batch_size, 64, 32))[:, 32:, :]
-        #     a_output = self.tf(a_x)
-        #     n_output = self.tf(n_x)
-        #     output = torch.cat([a_output, n_output], dim=1)
-        #     output = torch.reshape(output, (int(batch_size*64), 1))
-        #     output = F.sigmoid(output)
-        #     # output = F.relu(output)
-        #     return output
+        batch_size = int(x.shape[0] / 64)
+        feature_dim = x.shape[1]
+        if self.training:  # batch_size > 0:
+            x = torch.reshape(x, (batch_size, 64, feature_dim))
+            a_x = x[:, :32, :]
+            n_x = x[:, 32:, :]
+            a_attn, a_output = self.tf(a_x, None)
+            n_attn, n_output = self.tf(n_x, None)
+            a_output = a_attn.mean(dim=2) + a_output.mean(dim=2)
+            n_output = n_attn.mean(dim=2) + n_output.mean(dim=2)
+            # a_output = self.reducer_4_tf(a_output)
+            # n_output = self.reducer_4_tf(n_output)
+            # a_output = a_attn + a_output
+            # n_output = n_attn + n_output
+            x = torch.cat([a_output, n_output], dim=1)
+            # x = x.reshape(batch_size * 64, 32)
+        else:
+            attn, output = self.tf(x)
+            output = attn.mean(dim=2) + output.mean(dim=2)
+
+            # output = self.reducer_4_tf(output)
+            # output = attn + output
+            x = torch.squeeze(output)
+
+
+        # 不通过模型，直接使用特征量计算，loss一直在2以上 # AUC: 0.34005
+        # if self.input_dim == 512:
+        #     x = x.float()
+        #     x = F.linear(x, vars[0], vars[1])
+        #     # 增加一层
+        #     x = F.relu(x)
+        #     # x = F.softmax(x)
+        #     x = F.dropout(x, self.drop_p, training=self.training)
+        #     x = F.linear(x, vars[2], vars[3])
+        # elif self.input_dim == 2048:
+        #     # x = x.float()
+        #     x = F.linear(x, vars[0], vars[1])
+        #     x = F.relu(x)
+        #     x = F.dropout(x, self.drop_p, training=self.training)
+        #     x = F.linear(x, vars[2], vars[3])
+        # elif self.input_dim == 2560:
+        #     x = x.float()
+        #     x1 = x[:, :512]
+        #     x2 = x[:, 512:]
+        #     x1 = F.linear(x1, vars[0], vars[1])
+        #     x2 = F.linear(x2, vars[2], vars[3])
+        #     x2 = F.relu(x2)
+        #     x2 = F.dropout(x2, self.drop_p, training=self.training)
+        #     x2 = F.linear(x2, vars[4], vars[5])
+        #     x = x1 + x2
         # else:
-        #     output = self.tf(x)
-        #     output = output.squeeze()
-        #     output = F.sigmoid(output)
-        #     # output = F.relu(output)
-        #     return output
+        #     raise RuntimeError("No such Runtime Error")
 
         if self.nk:
             if self.training:
@@ -408,13 +411,17 @@ class Learner(nn.Module):
 
             return outputs
         else:
-            x = F.relu(x)
-            x = F.dropout(x, self.drop_p, training=self.training)
-            # if self.input_dim == 512:
-            #     x = F.linear(x, vars[2], vars[3])
-            # else:
-            x = F.linear(x, vars[4], vars[5])
-            x = torch.sigmoid(x)
+            # x = F.relu(x)
+            # x = F.dropout(x, self.drop_p, training=self.training)
+            # # if self.input_dim == 512:
+            # #     x = F.linear(x, vars[2], vars[3])
+            # # else:
+            # x = F.linear(x, vars[4], vars[5])
+            # x = torch.sigmoid(x)
+            # a_attn.mean(dim=2) + a_output.mean(dim=2)
+
+            # x = x.mean(dim=1)
+            x = F.sigmoid(x)
             return x
         # inputs = torch.clone(x)
         # x = F.relu(x)  # 改善了0.02
@@ -437,6 +444,26 @@ class Learner(nn.Module):
 
         # return  output1
         # return (outputs + output1)/2  # 加了sigmoid的之后的loss不再下降, 精度会有一点的下降
+
+        # --input_dim 2048 --lr 0.01 --tf0.8383009988878762
+        # batch_size = int(x.shape[0] / 64)
+        # if self.training: #batch_size > 0:
+        #     x = torch.reshape(x, (batch_size, 64, 32))
+        #     a_x = torch.reshape(x, (batch_size, 64, 32))[:, :32, :]
+        #     n_x = torch.reshape(x, (batch_size, 64, 32))[:, 32:, :]
+        #     a_output = self.tf(a_x)
+        #     n_output = self.tf(n_x)
+        #     output = torch.cat([a_output, n_output], dim=1)
+        #     output = torch.reshape(output, (int(batch_size*64), 1))
+        #     output = F.sigmoid(output)
+        #     # output = F.relu(output)
+        #     return output
+        # else:
+        #     output = self.tf(x)
+        #     output = output.squeeze()
+        #     output = F.sigmoid(output)
+        #     # output = F.relu(output)
+        #     return output
 
     def parameters(self):
         """
@@ -718,7 +745,7 @@ class NK(nn.Module):
                     feature_score = n_caption_score
                 # feature_score = self.calculate_feature_score(memory, caption)
                 # feature score越大，说明和其他的特征量越相似
-                # print("feature_score:", feature_score)
+                print("feature_score:", feature_score)
                 if threshold > feature_score:
                     if random.random() < self.memory_rate:
                         memory.append(caption)

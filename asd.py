@@ -57,6 +57,15 @@ def KMeans(x, K=10, Niter=10, verbose=True):
 
 
 if __name__ == '__main__':
+    pass
+    # from torch import nn
+    #
+    # transformer_model = nn.Transformer(nhead=16, num_encoder_layers=12)
+    # src = torch.rand((10, 32, 512))
+    # tgt = torch.rand((20, 32, 512))
+    # out = transformer_model(src, None)
+    # print(out)
+
     # import random
     # a = 0
     # for i in range(100):
@@ -64,19 +73,19 @@ if __name__ == '__main__':
     #         a+=1
     # print(a/100)
 
-    score_list = np.zeros(32)
-    # step = np.round(np.linspace(0, 32 // 16, 33))
-    num_frames = 32
-    # print(num_frames)
-    score_list = [i for i in range(num_frames)]
-    for idx, i in enumerate(range(0, num_frames - 15, 16)):
-        # assert (len(score_list) >= i + 16), "len of list:" + str(len(score_list)) + ", index: " + str(i + 16)
-        if i + 16 == len(score_list):
-            print(score_list[i:])
-        else:
-            print(score_list[i:min((i + 16), len(score_list) - 1)])
+    # score_list = np.zeros(32)
+    # # step = np.round(np.linspace(0, 32 // 16, 33))
+    # num_frames = 32
+    # # print(num_frames)
+    # score_list = [i for i in range(num_frames)]
+    # for idx, i in enumerate(range(0, num_frames - 15, 16)):
+    #     # assert (len(score_list) >= i + 16), "len of list:" + str(len(score_list)) + ", index: " + str(i + 16)
+    #     if i + 16 == len(score_list):
+    #         print(score_list[i:])
+    #     else:
+    #         print(score_list[i:min((i + 16), len(score_list) - 1)])
 
-            # import torch
+    # import torch
     # import clip
     # from PIL import Image
     #

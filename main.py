@@ -16,7 +16,7 @@ def train(epoch):
     print('\nEpoch: %d' % epoch)
     global n_iter
     first_flag = True
-    iter_in_epoch =0
+    iter_in_epoch = 0
     first_optimize_iter = args.first_optimize_iter
     model.train()
     train_loss = 0
@@ -39,7 +39,7 @@ def train(epoch):
         optimizer.step()
         train_loss += loss.item()
         n_iter += 1
-        iter_in_epoch +=1
+        iter_in_epoch += 1
         if args.nk:
             print("len(a_memory): ", len(model.a_memory), "len(n_memory): ", len(model.n_memory))
 
@@ -272,7 +272,7 @@ def test_abnormal(epoch, patient, args):
             fpr, tpr, thresholds = metrics.roc_curve(gt_list3, score_list3, pos_label=1)
             sample_auc = metrics.auc(fpr, tpr)
             auc += sample_auc
-            # if sample_auc > 0.9:
+            # if True:
             #     # print(video_names, video_names2)
             #     plt.plot(gt_list3, label='gt')
             #     plt.plot(score_list3, label='prediction')
@@ -287,7 +287,6 @@ def test_abnormal(epoch, patient, args):
             #     plt.xlabel('frames')
             #     plt.ylabel('anomaly score')
             #     plt.show()
-            # print(thresholds)
         auc_video = auc / 140
         print('auc_video = {}', auc_video)
         all_pred = np.concatenate(all_pred, axis=0)
@@ -366,6 +365,8 @@ if __name__ == '__main__':
     parser.add_argument('--update_threshold', default=False, action='store_true', help='update_threshold')
     parser.add_argument('--patient', default=10, type=int, help='patient')
     parser.add_argument('--a_topk', default=1, type=int, help='add top k anomaly into anomaly memory space')
+    parser.add_argument('--topk_score', default=1, type=int,
+                        help='use the distance with top k memory to represent the similarity')
     parser.add_argument('--first_optimize_iter', default=3, type=int, help='first_optimize_iter')
 
     parser.add_argument('--loss_topk', default=2, type=int, help='loss_topk')
@@ -406,7 +407,7 @@ if __name__ == '__main__':
     if args.FFC:
         model = Learner2(input_dim=args.input_dim, drop_p=args.drop).to(device)
     elif args.tf:
-        model = TFLeaner(args.input_dim, args.embedding_dim, args.n_layer, args.n_head, 0).to(device)
+        model = TFLeaner(args.input_dim, args.embedding_dim, args.n_layer, args.n_head, args).to(device)
     else:
         # model = Learner(input_dim=args.input_dim, drop_p=args.drop).to(device)
         model = Learner(input_dim=args.input_dim, drop_p=args.drop, memory_rate=args.memory_rate,

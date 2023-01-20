@@ -129,9 +129,9 @@ class Anomaly_Loader(Dataset):
         else:
             name, frames, gts = self.data_list[idx].split('|')[0], int(self.data_list[idx].split('|')[1]), \
                 self.data_list[idx].split('|')[2][1:-2].split(',')
-            if "Explosion021_x264" in name:
-                print(1)
-                print(gts)
+            # if "Explosion021_x264" in name:
+            #     print(1)
+            #     print(gts)
             gts = [int(i) for i in gts]
             if self.feature_dim == 512:
                 feature = get_clip_feature(name, test_mode, normal_mode, mix=True)
