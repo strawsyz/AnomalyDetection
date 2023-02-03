@@ -1,5 +1,6 @@
 import copy
 import math
+import matplotlib.pyplot as plt
 
 import numpy as np
 import torch
@@ -276,13 +277,24 @@ class TFLeaner(nn.Module):
 
         # output = output.mean(dim=2)
 
+    def memory_stability(self):
+        memory = torch.stack(self.a_memory)
+        saliency_scores = self._calcu_saliency_score_in_memory(memory)
+        a_stability = torch.mean(saliency_scores)
+        memory = torch.stack(self.n_memory)
+        saliency_scores = self._calcu_saliency_score_in_memory(memory)
+        n_stability = torch.mean(saliency_scores)
+        return a_stability + n_stability
+
     def tf(self, src, src_mask=None, gt=None):
+        # normalize features
+        # print(src.shape)
+        # src = torch.nn.functional.normalize(src,dim=2)
 
         if self.encoder2 is None:
             output, attn = self.encoder(src, src_mask)
             attn, output = self.embed_attn_output(attn, output)
 
-            # return output
         else:
             src1 = src[:, :512]
             src2 = src[:, 512:]
@@ -295,7 +307,7 @@ class TFLeaner(nn.Module):
             return output1 + output2
 
         if self.nk:
-            attn = attn.reshape(-1, 32)
+            # attn = attn.reshape(-1, 32)
             x = self.reducer_4_tf(output)
             x = x.reshape(-1, 32)
             if self.training and gt == 1:
@@ -319,9 +331,25 @@ class TFLeaner(nn.Module):
                 outputs[index] = anomaly_score
             outputs = torch.stack(outputs, dim=0)
             outputs = torch.unsqueeze(outputs, dim=1)
-            return outputs + torch.unsqueeze(attn.mean(dim=1),dim=1)
+            # output = torch.nn.functional.normalize(output.mean(dim=2), dim=1)
+            # print("nk: ", torch.mean(outputs))
+            # print("attn: ", torch.mean(attn) )
+            # print("output: ",  torch.mean(output))
+            # return outputs + (torch.reshape(attn.mean(dim=2), (-1, 1))
+            #                   + torch.reshape(output, (-1, 1)))
+            return outputs
+            # return 0.01*outputs + torch.reshape(output.mean(dim=2), (-1, 1))  #  0.6487404177232166
+            # return 0.1 * outputs + torch.reshape(output.mean(dim=2), (-1, 1))  # 0.6326768455348053
+            # return 0.01*outputs + (torch.reshape(attn.mean(dim=2), (-1, 1)) + torch.reshape(output.mean(dim=2), (-1, 1)))
+            # return outputs + torch.reshape(attn.mean(dim=2), (-1, 1))
         else:
-            output = attn.mean(dim=2) + output.mean(dim=2)
+            # output = attn.mean(dim=2)
+            output = output.mean(dim=2)  # 0.8175993762866813
+            # output = torch.nn.functional.normalize(output.mean(dim=2), dim=0)  # 0.7209975554922788
+            # output = torch.nn.functional.normalize(output.mean(dim=2), dim=1)  # 0.7329674390747498
+            # output = attn.mean(dim=2) * output.mean(dim=2)  # 0.8054970923107212
+            # output = attn.mean(dim=2) + output.mean(dim=2)  #  0.804344499073478
+            # output = attn.mean(dim=2) + torch.nn.functional.normalize(output.mean(dim=2), dim=1)  #  0.6958079149865213
             return output
 
     def forward(self, src, src_mask=None):
@@ -330,6 +358,9 @@ class TFLeaner(nn.Module):
         feature_dim = x.shape[1]
         if self.training:  # batch_size > 0:
             x = torch.reshape(x, (batch_size, 64, feature_dim))
+            # tmp_x = x[0, 0, :]
+            # plt.plot((tmp_x))
+            # plt.show()
             a_x = x[:, :32, :]
             n_x = x[:, 32:, :]
             a_output = self.tf(a_x, src_mask, gt=1)
@@ -347,11 +378,11 @@ class TFLeaner(nn.Module):
 
     def _calcu_saliency_score_in_memory(self, memory):
         # cosine abs
-        # saliency_scores = []
-        # for _memory in memory:
-        #     saliency_score = torch.cosine_similarity(_memory, memory, dim=1).abs().mean()
-        #     saliency_scores.append(saliency_score)
-        # saliency_scores = torch.stack(saliency_scores)
+        saliency_scores = []
+        for _memory in memory:
+            saliency_score = torch.cosine_similarity(_memory, memory, dim=1).abs().mean()
+            saliency_scores.append(saliency_score)
+        saliency_scores = torch.stack(saliency_scores)
 
         # cosine no abs
         # saliency_scores = []
@@ -363,15 +394,31 @@ class TFLeaner(nn.Module):
         # saliency_scores = torch.stack(saliency_scores)
 
         # multiply two memory  # 第二版本除以模长
-        saliency_scores = memory.mm(torch.transpose(memory, 0, 1)).mean(dim=1) / (memory[:] * memory[:]).sum(dim=1)
-
+        # saliency_scores = memory.mm(torch.transpose(memory, 0, 1)).mean(dim=1) / (memory[:] * memory[:]).sum(dim=1)
+        # saliency_scores = torch.abs(saliency_scores)
+        # saliency_scores = torch.abs(memory.mm(torch.transpose(memory, 0, 1))).mean(dim=1) / (memory[:] * memory[:]).sum(
+        #     dim=1)
         return saliency_scores
+
+    def similarity_a_n_memory_space(self):
+        n_memory = torch.stack(self.n_memory)
+        similarity_scores = []
+        for a_memory in self.a_memory:
+            saliency_score = torch.cosine_similarity(a_memory, n_memory, dim=1).abs().mean()
+            similarity_scores.append(saliency_score)
+        similarity_score = torch.stack(similarity_scores).mean()
+        return similarity_score
 
     def optimize_memory(self):
         """optimize_memory"""
         a_memory = []
         print(self.threshold_a_caption_score)
         print(self.threshold_n_caption_score)
+        # todo
+        # 只留下重要的memory
+        # 让异常memory和正常memory保持一定距离
+        #     计算a memory space和n memory space的相似度
+        #     将相似度作为loss的一部分进行计算
 
         if len(self.a_memory) > self.threshold_a_memory_size:
             memory = torch.stack(self.a_memory)
@@ -447,6 +494,10 @@ class TFLeaner(nn.Module):
                 self.n_memory = [self.n_memory[i] for i in indexes]
             print(f"clear n memory {old_length} -> {new_length}")
 
+            # reset threhsold
+            self.threshold_a_caption_score = 1
+            self.threshold_n_caption_score = 1
+
         print("=======================ending clear memory=======================")
 
     def calculate_feature_score(self, memory, feature):
@@ -467,13 +518,15 @@ class TFLeaner(nn.Module):
         # caption_scores = []
         # for in_feature in memory:
         #     in_feature = torch.unsqueeze(in_feature, dim=0)
-        #     caption_scores.append(Variable(torch.cosine_similarity(in_feature, feature), requires_grad=True).abs)
-        #
+        #     caption_scores.append(Variable(torch.cosine_similarity(in_feature, feature), requires_grad=True).abs())
         # caption_score = torch.cat(caption_scores, dim=0).max()
 
         # abs
         # caption_score = Variable(torch.cosine_similarity(torch.stack(memory, dim=0), feature),
         #                          requires_grad=True).abs().max()
+        # mean + abs
+        caption_score = Variable(torch.cosine_similarity(torch.stack(memory, dim=0), feature),
+                                 requires_grad=True).abs().mean()
 
         # no abs
         # caption_score = Variable(torch.cosine_similarity(torch.stack(memory, dim=0), feature),
@@ -488,16 +541,15 @@ class TFLeaner(nn.Module):
         # print("cosine similarity:", caption_score.data, "multiple similarity:", caption_score1.data)
 
         # 使用乘号来表示相似度
-        caption_scores = (Variable(torch.stack(memory, dim=0)) * feature).mean(dim=1)/(feature*feature).mean(dim=1)
-        # print((Variable(torch.stack(memory, dim=0)) * feature).mean(dim=1))
-        # print(torch.argmax((Variable(torch.stack(memory, dim=0)) * feature).mean(dim=1)))
-
-        if self.topk_score == 1:
-            caption_score = caption_scores.max()
-        else:
-            k = min(self.topk_score, len(caption_scores))
-            topk_caption_scores = caption_scores.topk(k=k, largest=True).values
-            caption_score = topk_caption_scores.mean()
+        # caption_scores = (Variable(torch.stack(memory, dim=0)) * feature).mean(dim=1) / (feature * feature).mean(dim=1)
+        # # caption_scores = (Variable(torch.stack(memory, dim=0)) * feature).mean(dim=1)# / (feature * feature).mean(dim=1)
+        # caption_scores = torch.abs_(caption_scores)
+        # if self.topk_score == 1:
+        #     caption_score = caption_scores.max()
+        # else:
+        #     k = min(self.topk_score, len(caption_scores))
+        #     topk_caption_scores = caption_scores.topk(k=k, largest=True).values
+        #     caption_score = topk_caption_scores.mean()
 
         # 找到最相似的memory的距离，作为这个caption的特异性,这个数字越小，说明和这个caption相似的memory越少，也说明越有保存的价值
         return caption_score
@@ -536,13 +588,14 @@ class TFLeaner(nn.Module):
                 # print("feature_score:", feature_score)
                 if threshold > feature_score:
                     if random.random() < self.memory_rate:
-                        memory.append(caption)
+                        memory.append(caption.detach())
                 # if len(memory) > self.threshold_n_memory_size
             else:
                 if random.random() < self.memory_rate:
-                    memory.append(caption)
+                    memory.append(caption.detach())
 
         return a_caption_score - n_caption_score
+        # return a_caption_score
 
     def add_anomaly_memory(self, x, output1):
         batch_size = len(x)

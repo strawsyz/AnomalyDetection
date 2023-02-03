@@ -15,7 +15,7 @@ from transformer import TFLeaner
 def train(epoch):
     print('\nEpoch: %d' % epoch)
     global n_iter
-    first_flag = True
+    first_flag = False
     iter_in_epoch = 0
     first_optimize_iter = args.first_optimize_iter
     model.train()
@@ -31,6 +31,12 @@ def train(epoch):
         inputs = inputs.view(-1, inputs.size(-1)).to(device)
         outputs = model(inputs)
         loss = criterion(outputs, batch_size, args=args)
+        # sta = model.memory_stability() * 0.0001
+        # print("memory_stability", sta)
+        # loss += sta
+        # similaity_a_n = model.similarity_a_n_memory_space() * 0.0001
+        # print("similaity_a_n", similaity_a_n)
+        # loss += similaity_a_n
         optimizer.zero_grad()
         # grads = [x.grad for x in optimizer.param_groups[0]]
         # print(grads)
@@ -218,20 +224,19 @@ def test_abnormal(epoch, patient, args):
             score_list = np.zeros(num_frames)
             # print(num_frames)
 
-            # if args.input_dim == 512:
-            #     for idx, i in enumerate(range(0, num_frames - 16, 16)):
-            #         assert len(score_list) > i + 16, "len of list:" + str(len(score_list)) + ", index: " + str(i + 16)
-            #         # if i + 16 == len(score_list):
-            #         score_list[i:] = score[idx]
-            #         # else:
-            #         #     score_list[i:i + 16] = score[idx]
-            #
-            #     score_list[i + 16:] = score[idx]
-            #     assert score_list[-1] != 0, score_list
-            # else:
-            step = np.round(np.linspace(0, frames[0] // 16, 33))
-            for j in range(32):
-                score_list[int(step[j]) * 16:(int(step[j + 1])) * 16] = score[j]
+            if args.input_dim != 2048:
+                for idx, i in enumerate(range(0, num_frames - 16, 16)):
+                    assert len(score_list) > i + 16, "len of list:" + str(len(score_list)) + ", index: " + str(i + 16)
+                    # if i + 16 == len(score_list):
+                    score_list[i:] = score[idx]
+                    # else:
+                    #     score_list[i:i + 16] = score[idx]
+                score_list[i + 16:] = score[idx]
+                assert score_list[-1] != 0, score_list
+            else:
+                step = np.round(np.linspace(0, num_frames // 16, 33))
+                for j in range(32):
+                    score_list[int(step[j]) * 16:(int(step[j + 1])) * 16] = score[j]
 
             # 分别处理各自的分数
             gt_list = np.zeros(frames[0])
@@ -248,16 +253,16 @@ def test_abnormal(epoch, patient, args):
             score2 = score2.cpu().detach().numpy()
             score_list2 = np.zeros(frames2[0])
 
-            # if args.input_dim == 512:
-            #     num_frames = frames2[0]
-            #     for idx, i in enumerate(range(0, num_frames - 16, 16)):
-            #         score_list2[i:i + 16] = score2[idx]
-            #     score_list2[i + 16:] = score2[idx]
-            #     assert score_list2[-1] != 0
-            # else:
-            step2 = np.round(np.linspace(0, frames2[0] // 16, 33))
-            for kk in range(32):
-                score_list2[int(step2[kk]) * 16:(int(step2[kk + 1])) * 16] = score2[kk]
+            if args.input_dim != 2048:
+                num_frames = frames2[0]
+                for idx, i in enumerate(range(0, num_frames - 16, 16)):
+                    score_list2[i:i + 16] = score2[idx]
+                score_list2[i + 16:] = score2[idx]
+                assert score_list2[-1] != 0
+            else:
+                step2 = np.round(np.linspace(0, frames2[0] // 16, 33))
+                for kk in range(32):
+                    score_list2[int(step2[kk]) * 16:(int(step2[kk + 1])) * 16] = score2[kk]
 
             gt_list2 = np.zeros(frames2[0])
             # save_result(normal_video_name, score_list2, gt_list2)
@@ -272,21 +277,21 @@ def test_abnormal(epoch, patient, args):
             fpr, tpr, thresholds = metrics.roc_curve(gt_list3, score_list3, pos_label=1)
             sample_auc = metrics.auc(fpr, tpr)
             auc += sample_auc
-            # if True:
-            #     # print(video_names, video_names2)
-            #     plt.plot(gt_list3, label='gt')
-            #     plt.plot(score_list3, label='prediction')
-            #
-            #     # 　画分界线
-            #     plt.axvline(len(score_list), 1.0, 0.0, color='green')
-            #     plt.text(0, 0.5, anomaly_video_name)
-            #     plt.text(0, 1, normal_video_name)
-            #     plt.title("auc: {}".format(sample_auc))
-            #     # plt.title("auc: {},\n {}, \n{}".format(sample_auc, anomaly_video_name, normal_video_name))
-            #     plt.legend()
-            #     plt.xlabel('frames')
-            #     plt.ylabel('anomaly score')
-            #     plt.show()
+            if random.random() < -1:
+                # print(video_names, video_names2)
+                plt.plot(gt_list3, label='gt')
+                plt.plot(score_list3, label='prediction')
+
+                # 　画分界线
+                plt.axvline(len(score_list), 1.0, 0.0, color='green')
+                plt.text(0, 0.5, anomaly_video_name)
+                plt.text(0, 1, normal_video_name)
+                plt.title("auc: {}".format(sample_auc))
+                # plt.title("auc: {},\n {}, \n{}".format(sample_auc, anomaly_video_name, normal_video_name))
+                plt.legend()
+                plt.xlabel('frames')
+                plt.ylabel('anomaly score')
+                plt.show()
         auc_video = auc / 140
         print('auc_video = {}', auc_video)
         all_pred = np.concatenate(all_pred, axis=0)
@@ -316,10 +321,7 @@ def test_abnormal(epoch, patient, args):
         else:
             patient = patient - 1
             print("patient decrease", patient)
-            if patient == 0:
-                print("Easy stop! best auc: ", best_auc)
-                import sys
-                sys.exit()
+
     return auc, patient
 
 
@@ -363,13 +365,15 @@ if __name__ == '__main__':
     parser.add_argument('--tf', action='store_true', help='transformer')
     parser.add_argument('--nk', default=False, action='store_true', help='nk')
     parser.add_argument('--update_threshold', default=False, action='store_true', help='update_threshold')
-    parser.add_argument('--patient', default=10, type=int, help='patient')
+    parser.add_argument('--patient', default=5, type=int, help='patient')
     parser.add_argument('--a_topk', default=1, type=int, help='add top k anomaly into anomaly memory space')
-    parser.add_argument('--topk_score', default=1, type=int,
+    parser.add_argument('--topk_score', default=7, type=int,
                         help='use the distance with top k memory to represent the similarity')
     parser.add_argument('--first_optimize_iter', default=3, type=int, help='first_optimize_iter')
+    parser.add_argument('--distance', default="mul", type=str,
+                        help='how to calculate distance between two features. [mul, cos, mse]')
 
-    parser.add_argument('--loss_topk', default=2, type=int, help='loss_topk')
+    parser.add_argument('--loss_topk', default=1, type=int, help='loss_topk')
 
     args = parser.parse_args()
 
@@ -390,7 +394,8 @@ if __name__ == '__main__':
     elif args.input_dim == 2560:
         print("Using I3D+CLIP feature")
     else:
-        raise RuntimeError("Not Support such dataset")
+        print("Using UIO feature")
+        # raise RuntimeError("Not Support such dataset")
 
     normal_train_dataset = Normal_Loader(is_train=1, modality=args.modality, feature_dim=args.input_dim)
     normal_test_dataset = Normal_Loader(is_train=0, modality=args.modality, feature_dim=args.input_dim)
@@ -436,7 +441,9 @@ if __name__ == '__main__':
         if args.nk:
             model.clear_memory(rate=args.clear_rate, epoch=epoch)
         print("best_auc", best_auc)
-    # print(aucs)
+        if patient == 0:
+            print("Easy stop!")
+            break
     print("best_auc", best_auc)
     print(aucs)
     plt.plot(aucs)
@@ -457,3 +464,9 @@ if __name__ == '__main__':
 
 # 0.8353636423009376 2048 128
 # 0.8354656209751689　2048 256
+
+# 0.8292918654273516
+#  0.8239086002514562
+
+# 0.8112955221306541  留下尽量相似的记录
+# 0.8312737009212092  留下不相似的记录

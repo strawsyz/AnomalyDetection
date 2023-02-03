@@ -57,7 +57,12 @@ def KMeans(x, K=10, Niter=10, verbose=True):
 
 
 if __name__ == '__main__':
-    pass
+    t = torch.Tensor([0.1, 0.1, 0.1, 0.1, 0.1, 0.1,0.1])
+    loss = torch.nn.CrossEntropyLoss()
+    ce_loss = loss(t, t)
+    print(ce_loss)
+    print(len(t))
+    print(ce_loss/len(t))
     # from torch import nn
     #
     # transformer_model = nn.Transformer(nhead=16, num_encoder_layers=12)

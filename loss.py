@@ -54,13 +54,14 @@ def MIL(y_pred, batch_size, is_transformer=0, model=None, args=None):
         # y_normal_min = torch.min(y_normal)
 
         loss += F.relu(1. - y_anomaly_max + y_normal_max)  # 和下面那个没有太大的区别
-        # loss += F.relu(2. - y_anomaly_max + y_normal_max)
         # 试着去掉其他的loss函数，看看会有什么变化
         sparsity += torch.sum(y_anomaly) * 0.00008
         smooth += torch.sum((y_pred[i, :31] - y_pred[i, 1:32]) ** 2) * 0.00008
     # print("sparsity loss:", sparsity/batch_size)
     # print("smooth loss:", smooth/batch_size)
     loss = (loss + sparsity + smooth) / batch_size
+    # loss = (loss + smooth) / batch_size
+    # loss = loss / batch_size
 
     return loss
 

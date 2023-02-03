@@ -14,7 +14,17 @@ class Normal_Loader(Dataset):
         super(Normal_Loader, self).__init__()
         self.is_train = is_train
         self.modality = modality
-        self.path = path
+        if feature_dim not in [512, 2048, 2560]:
+            split_tmp = "train" if is_train else "test"
+            mode_tmp = "normal"
+            if is_train:
+                root_path = "/workspace/datasets/ucf-crime/uio/32clip"
+            else:
+                root_path = "/workspace/datasets/ucf-crime/uio/24b"
+            root_path = "/workspace/datasets/ucf-crime/uio/sorted"
+            self.path = os.path.join(root_path, split_tmp, mode_tmp)
+        else:
+            self.path = path
         self.feature_dim = feature_dim
         if self.is_train == 1:
             data_list = os.path.join(path, 'train_normal.txt')
@@ -54,6 +64,10 @@ class Normal_Loader(Dataset):
                 flow_npy = np.load(os.path.join(self.path + 'all_flows', name + '.npy'))
                 concat_npy = np.concatenate([feature, rgb_npy, flow_npy], axis=1)
                 return concat_npy
+            else:
+                video_id = name.split("/")[-1].split(".")[0]
+                data = np.load(os.path.join(self.path, f'{video_id}.npy'))
+                return data
         else:
             name, frames, gts = self.data_list[idx].split(' ')[0], int(self.data_list[idx].split(' ')[1]), int(
                 self.data_list[idx].split(' ')[2][:-1])
@@ -77,6 +91,10 @@ class Normal_Loader(Dataset):
                 flow_npy = np.load(os.path.join(self.path + 'all_flows', name + '.npy'))
                 concat_npy = np.concatenate([feature, rgb_npy, flow_npy], axis=1)
                 return concat_npy, gts, frames, name
+            else:
+                video_id = name.split("/")[-1].split(".")[0]
+                data = np.load(os.path.join(self.path, f'{video_id}.npy'))
+                return data, gts, frames, name
 
 
 class Anomaly_Loader(Dataset):
@@ -88,7 +106,17 @@ class Anomaly_Loader(Dataset):
         super(Anomaly_Loader, self).__init__()
         self.is_train = is_train
         self.modality = modality
-        self.path = path
+        if feature_dim not in [512, 2048, 2560]:
+            split_tmp = "train" if is_train else "test"
+            mode_tmp = "anomaly"
+            if is_train:
+                root_path = "/workspace/datasets/ucf-crime/uio/so"
+            else:
+                root_path = "/workspace/datasets/ucf-crime/uio/24b"
+            root_path = "/workspace/datasets/ucf-crime/uio/sorted"
+            self.path = os.path.join(root_path, split_tmp, mode_tmp)
+        else:
+            self.path = path
         self.feature_dim = feature_dim
         if self.is_train == 1:
             data_list = os.path.join(path, 'train_anomaly.txt')
@@ -126,6 +154,10 @@ class Anomaly_Loader(Dataset):
                 flow_npy = np.load(os.path.join(self.path + 'all_flows', name + '.npy'))
                 concat_npy = np.concatenate([feature, rgb_npy, flow_npy], axis=1)
                 return concat_npy
+            else:
+                video_id = name.split("/")[-1].split(".")[0]
+                data = np.load(os.path.join(self.path, f'{video_id}.npy'))
+                return data
         else:
             name, frames, gts = self.data_list[idx].split('|')[0], int(self.data_list[idx].split('|')[1]), \
                 self.data_list[idx].split('|')[2][1:-2].split(',')
@@ -152,6 +184,10 @@ class Anomaly_Loader(Dataset):
                 flow_npy = np.load(os.path.join(self.path + 'all_flows', name + '.npy'))
                 concat_npy = np.concatenate([feature, rgb_npy, flow_npy], axis=1)
                 return concat_npy, gts, frames, name
+            else:
+                video_id = name.split("/")[-1].split(".")[0]
+                data = np.load(os.path.join(self.path, f'{video_id}.npy'))
+                return data, gts, frames, name
 
 
 def get_feature_filepath(video_id, test_mode, normal_mode, mix=False):
