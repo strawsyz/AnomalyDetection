@@ -25,11 +25,19 @@ def train(epoch):
     i = 0
     for batch_idx, (normal_inputs, anomaly_inputs) in enumerate(zip(normal_train_loader, anomaly_train_loader)):
         i += 1
+        if args.input_dim in [2049, 1280, 1024]:
+            anomaly_inputs, a_names = anomaly_inputs
+            normal_inputs, n_names = normal_inputs
+            names = torch.cat([a_names, n_names], dim=0)  # (1,60)
+        else:
+            names = None
+        # print(a_names)
         inputs = torch.cat([anomaly_inputs, normal_inputs], dim=1)
+        # names = torch.stack([a_names, n_names], dim=0)  # (2,30)
         # inputs = Variable(inputs)
         batch_size = inputs.shape[0]
         inputs = inputs.view(-1, inputs.size(-1)).to(device)
-        outputs = model(inputs)
+        outputs = model(inputs, names)
         loss = criterion(outputs, batch_size, args=args)
         # sta = model.memory_stability() * 0.0001
         # print("memory_stability", sta)
@@ -224,7 +232,12 @@ def test_abnormal(epoch, patient, args):
             score_list = np.zeros(num_frames)
             # print(num_frames)
 
-            if args.input_dim != 2048:
+            if args.input_dim in [2048, 512]:
+                # 将视频分为32个部分然后分别计算分数
+                step = np.round(np.linspace(0, num_frames // 16, 33))
+                for j in range(32):
+                    score_list[int(step[j]) * 16:(int(step[j + 1])) * 16] = score[j]
+            else:
                 for idx, i in enumerate(range(0, num_frames - 16, 16)):
                     assert len(score_list) > i + 16, "len of list:" + str(len(score_list)) + ", index: " + str(i + 16)
                     # if i + 16 == len(score_list):
@@ -232,11 +245,7 @@ def test_abnormal(epoch, patient, args):
                     # else:
                     #     score_list[i:i + 16] = score[idx]
                 score_list[i + 16:] = score[idx]
-                assert score_list[-1] != 0, score_list
-            else:
-                step = np.round(np.linspace(0, num_frames // 16, 33))
-                for j in range(32):
-                    score_list[int(step[j]) * 16:(int(step[j + 1])) * 16] = score[j]
+                # assert score_list[-1] != 0, score_list
 
             # 分别处理各自的分数
             gt_list = np.zeros(frames[0])
@@ -253,16 +262,17 @@ def test_abnormal(epoch, patient, args):
             score2 = score2.cpu().detach().numpy()
             score_list2 = np.zeros(frames2[0])
 
-            if args.input_dim != 2048:
+            if args.input_dim in [2048, 512]:
+                ### 将测试结果分为21个断层，然后计算结果
+                step2 = np.round(np.linspace(0, frames2[0] // 16, 33))
+                for kk in range(32):
+                    score_list2[int(step2[kk]) * 16:(int(step2[kk + 1])) * 16] = score2[kk]
+            else:
                 num_frames = frames2[0]
                 for idx, i in enumerate(range(0, num_frames - 16, 16)):
                     score_list2[i:i + 16] = score2[idx]
                 score_list2[i + 16:] = score2[idx]
-                assert score_list2[-1] != 0
-            else:
-                step2 = np.round(np.linspace(0, frames2[0] // 16, 33))
-                for kk in range(32):
-                    score_list2[int(step2[kk]) * 16:(int(step2[kk + 1])) * 16] = score2[kk]
+                # assert score_list2[-1] != 0 ,score2[idx]
 
             gt_list2 = np.zeros(frames2[0])
             # save_result(normal_video_name, score_list2, gt_list2)
@@ -277,7 +287,7 @@ def test_abnormal(epoch, patient, args):
             fpr, tpr, thresholds = metrics.roc_curve(gt_list3, score_list3, pos_label=1)
             sample_auc = metrics.auc(fpr, tpr)
             auc += sample_auc
-            if random.random() < -1:
+            if random.random() < 0.1:
                 # print(video_names, video_names2)
                 plt.plot(gt_list3, label='gt')
                 plt.plot(score_list3, label='prediction')
@@ -372,12 +382,23 @@ if __name__ == '__main__':
     parser.add_argument('--first_optimize_iter', default=3, type=int, help='first_optimize_iter')
     parser.add_argument('--distance', default="mul", type=str,
                         help='how to calculate distance between two features. [mul, cos, mse]')
+    parser.add_argument('--feature_name', default="", type=str,
+                        help='select the feature to be used, [uio-caption, uio-vqa1, uio-caption-vqa, uio_opt_region, uio_fixed_region]')
+
+    parser.add_argument('--init_memory', default="one", type=str,
+                        help='when to init memory init memory  [fisrt, epoch, no]')
+    parser.add_argument('--check_caption_memory', default=False, action='store_true', help='nk')
 
     parser.add_argument('--loss_topk', default=1, type=int, help='loss_topk')
 
     args = parser.parse_args()
 
     set_seed(0)
+
+    feature_names = ["uio_caption", "uio_vqa1", "uio_caption_vqa1", "uio_opt_region", "uio_fixed_region", "clip", "i3d"]
+
+    if "uio" in args.feature_name:
+        args.check_caption_memory = True
 
     best_auc = 0
     n_iter = 0
@@ -397,10 +418,10 @@ if __name__ == '__main__':
         print("Using UIO feature")
         # raise RuntimeError("Not Support such dataset")
 
-    normal_train_dataset = Normal_Loader(is_train=1, modality=args.modality, feature_dim=args.input_dim)
-    normal_test_dataset = Normal_Loader(is_train=0, modality=args.modality, feature_dim=args.input_dim)
-    anomaly_train_dataset = Anomaly_Loader(is_train=1, modality=args.modality, feature_dim=args.input_dim)
-    anomaly_test_dataset = Anomaly_Loader(is_train=0, modality=args.modality, feature_dim=args.input_dim)
+    normal_train_dataset = Normal_Loader(is_train=1, modality=args.modality, feature_dim=args.input_dim, args=args)
+    normal_test_dataset = Normal_Loader(is_train=0, modality=args.modality, feature_dim=args.input_dim, args=args)
+    anomaly_train_dataset = Anomaly_Loader(is_train=1, modality=args.modality, feature_dim=args.input_dim, args=args)
+    anomaly_test_dataset = Anomaly_Loader(is_train=0, modality=args.modality, feature_dim=args.input_dim, args=args)
 
     normal_train_loader = DataLoader(normal_train_dataset, batch_size=train_batch_size, shuffle=True)
     normal_test_loader = DataLoader(normal_test_dataset, batch_size=test_batch_size, shuffle=False)
@@ -419,6 +440,8 @@ if __name__ == '__main__':
                         num_key_memory=args.num_key_memory, max_memory_size=args.max_memory_size,
                         threshold_caption_score=args.threshold_caption_score, nk=args.nk, args=args).to(device)
 
+    # normal_train_dataset.get_snippet_feature("203-9")
+
     # print('Loading..')
     # state = {
     #     'net': model.state_dict(),
@@ -432,22 +455,45 @@ if __name__ == '__main__':
 
     optimizer = torch.optim.Adagrad(model.parameters(), lr=args.lr, weight_decay=args.w)
     scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[25, 50])
+    # scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[2, 5], gamma=0.1)
     criterion = MIL
     aucs = []
+    if args.init_memory == "one":
+        model.init_memory_space(anomaly_train_dataset, normal_train_dataset, args)
+
     for epoch in range(0, args.epoch):
+        # 训练之前初始化一下记忆空间
+        if args.init_memory == "epoch":
+            model.init_memory_space(anomaly_train_dataset, normal_train_dataset, args)
+
         train(epoch)
+        # print results
+        if args.check_caption_memory:
+            a_caption_memory, n_caption_memory = model.show_stored_snippet_ids()
+            print("a_caption_memory: ")
+            for snippet_id in a_caption_memory:
+                result = anomaly_train_dataset.show_caption(snippet_id)
+                print(snippet_id, result)
+            print("n_caption_memory: ")
+            for snippet_id in n_caption_memory:
+                result = normal_train_dataset.show_caption(snippet_id)
+                print(snippet_id, result)
+
         auc, patient = test_abnormal(epoch, patient, args)
         aucs.append(auc)
         if args.nk:
             model.clear_memory(rate=args.clear_rate, epoch=epoch)
+        # print("a_caption_memory:", a_caption_memory)
+        # print("n_caption_memory:", n_caption_memory)
         print("best_auc", best_auc)
         if patient == 0:
             print("Easy stop!")
             break
-    print("best_auc", best_auc)
     print(aucs)
+    print("best_auc", best_auc)
     plt.plot(aucs)
     plt.show()
+
 # 0.8180977589971383  post-processed
 # 0.8181509890961944　　no post-processed better
 
@@ -470,3 +516,16 @@ if __name__ == '__main__':
 
 # 0.8112955221306541  留下尽量相似的记录
 # 0.8312737009212092  留下不相似的记录
+
+
+# 将caption对应的id保存到记忆空间，随着记忆空间的更新而更新captionid
+#     captionid 保存形式 “video_id-snippet-id"
+# 输出最后的captionid
+# 根据captionid找到对应的caption内容和视频的内容
+#     dataset根据snippetId找到对应的video
+#     更具video找到对应的caption文件
+#     在用sippetid找到对应的caption
+
+# epoch-1
+# ['234-6', '94-16', '568-5', '750-18', '679-14', '763-0', '641-25', '545-27', '171-13', '429-7']
+# ['752-16', '739-25', '645-31', '632-11', '125-16', '388-9', '113-23', '609-9', '433-11', '557-19']

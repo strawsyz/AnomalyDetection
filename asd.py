@@ -11,58 +11,69 @@ from matplotlib import pyplot as plt
 import torch
 
 
-def KMeans(x, K=10, Niter=10, verbose=True):
-    """Implements Lloyd's algorithm for the Euclidean metric."""
-
-    start = time.time()
-    N, D = x.shape  # Number of samples, dimension of the ambient space
-
-    c = x[:K, :].clone()  # Simplistic initialization for the centroids
-
-    x_i = LazyTensor(x.view(N, 1, D))  # (N, 1, D) samples
-    c_j = LazyTensor(c.view(1, K, D))  # (1, K, D) centroids
-
-    # K-means loop:
-    # - x  is the (N, D) point cloud,
-    # - cl is the (N,) vector of class labels
-    # - c  is the (K, D) cloud of cluster centroids
-    for i in range(Niter):
-        # E step: assign points to the closest cluster -------------------------
-        D_ij = ((x_i - c_j) ** 2).sum(-1)  # (N, K) symbolic squared distances
-        cl = D_ij.argmin(dim=1).long().view(-1)  # Points -> Nearest cluster
-
-        # M step: update the centroids to the normalized cluster average: ------
-        # Compute the sum of points per cluster:
-        c.zero_()
-        c.scatter_add_(0, cl[:, None].repeat(1, D), x)
-
-        # Divide by the number of points per cluster:
-        Ncl = torch.bincount(cl, minlength=K).type_as(c).view(K, 1)
-        c /= Ncl  # in-place division to compute the average
-
-    if verbose:  # Fancy display -----------------------------------------------
-        if use_cuda:
-            torch.cuda.synchronize()
-        end = time.time()
-        print(
-            f"K-means for the Euclidean metric with {N:,} points in dimension {D:,}, K = {K:,}:"
-        )
-        print(
-            "Timing for {} iterations: {:.5f}s = {} x {:.5f}s\n".format(
-                Niter, end - start, Niter, (end - start) / Niter
-            )
-        )
-
-    return cl, c
+# def KMeans(x, K=10, Niter=10, verbose=True):
+#     """Implements Lloyd's algorithm for the Euclidean metric."""
+#
+#     start = time.time()
+#     N, D = x.shape  # Number of samples, dimension of the ambient space
+#
+#     c = x[:K, :].clone()  # Simplistic initialization for the centroids
+#
+#     x_i = LazyTensor(x.view(N, 1, D))  # (N, 1, D) samples
+#     c_j = LazyTensor(c.view(1, K, D))  # (1, K, D) centroids
+#
+#     # K-means loop:
+#     # - x  is the (N, D) point cloud,
+#     # - cl is the (N,) vector of class labels
+#     # - c  is the (K, D) cloud of cluster centroids
+#     for i in range(Niter):
+#         # E step: assign points to the closest cluster -------------------------
+#         D_ij = ((x_i - c_j) ** 2).sum(-1)  # (N, K) symbolic squared distances
+#         cl = D_ij.argmin(dim=1).long().view(-1)  # Points -> Nearest cluster
+#
+#         # M step: update the centroids to the normalized cluster average: ------
+#         # Compute the sum of points per cluster:
+#         c.zero_()
+#         c.scatter_add_(0, cl[:, None].repeat(1, D), x)
+#
+#         # Divide by the number of points per cluster:
+#         Ncl = torch.bincount(cl, minlength=K).type_as(c).view(K, 1)
+#         c /= Ncl  # in-place division to compute the average
+#
+#     if verbose:  # Fancy display -----------------------------------------------
+#         if use_cuda:
+#             torch.cuda.synchronize()
+#         end = time.time()
+#         print(
+#             f"K-means for the Euclidean metric with {N:,} points in dimension {D:,}, K = {K:,}:"
+#         )
+#         print(
+#             "Timing for {} iterations: {:.5f}s = {} x {:.5f}s\n".format(
+#                 Niter, end - start, Niter, (end - start) / Niter
+#             )
+#         )
+#
+#     return cl, c
 
 
 if __name__ == '__main__':
-    t = torch.Tensor([0.1, 0.1, 0.1, 0.1, 0.1, 0.1,0.1])
-    loss = torch.nn.CrossEntropyLoss()
-    ce_loss = loss(t, t)
-    print(ce_loss)
-    print(len(t))
-    print(ce_loss/len(t))
+    temp_data = [0.6796410083501576, 0.5, 0.5, 0.4989147261468929, 0.5, 0.5]
+    # temp_data = [0.3099559765322104, 0.7043553725272184, 0.7008323699944315, 0.7355491793524616, 0.7344436992589234, 0.7372540557233029, 0.725538716584849, 0.7312445723783755, 0.7343317904654451, 0.7248407706815164, 0.7288006708813064]
+    temp_data = [i*100 for i in temp_data]
+    plt.plot(temp_data)
+    plt.xlabel("Epoch")
+    plt.ylabel("AUC (%)")
+    plt.show()
+    # 使用mul的时候，有些分数是固定，989多个分数没有变化
+    # 输出的异常文书几乎都保持着0
+    # a_caption_score: tensor(11.3593, device='cuda:0') n_caption_score: tensor(24.8932, device='cuda:0')
+
+    # t = torch.Tensor([0.1, 0.1, 0.1, 0.1, 0.1, 0.1,0.1])
+    # loss = torch.nn.CrossEntropyLoss()
+    # ce_loss = loss(t, t)
+    # print(ce_loss)
+    # print(len(t))
+    # print(ce_loss/len(t))
     # from torch import nn
     #
     # transformer_model = nn.Transformer(nhead=16, num_encoder_layers=12)

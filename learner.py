@@ -12,45 +12,58 @@ class Learner(nn.Module):
     def __init__(self, input_dim=512, drop_p=0.6, memory_rate=1.0, num_key_memory=10, max_memory_size=15,
                  threshold_caption_score=0.1, nk=False, args=None):
         super(Learner, self).__init__()
-        if input_dim == 512:
-            self.classifier = nn.Sequential(
-                nn.Linear(input_dim, 128),
-                nn.ReLU(),
-                nn.Dropout(drop_p),
-                nn.Linear(128, 32),
-                nn.ReLU(),
-                nn.Dropout(drop_p),
-                nn.Linear(32, 1),
-                nn.Sigmoid()
-            )
-        elif input_dim == 2048:
-            self.classifier = nn.Sequential(
-                nn.Linear(2048, 512),
-                nn.ReLU(),
-                nn.Dropout(drop_p),
-                nn.Linear(512, 32),
-                nn.ReLU(),
-                nn.Dropout(drop_p),
-                nn.Linear(32, 1),
-                nn.Sigmoid()
-            )
-        elif input_dim == 2560:
-            self.classifier = nn.Sequential(
-                nn.Linear(512, 32),
-                nn.Linear(2048, 512),
-                # nn.ReLU(),
-                # nn.Dropout(drop_p),
-                nn.Linear(512, 32),
-                # nn.ReLU(),
-                # nn.Dropout(drop_p),
-                nn.Linear(32, 1),
-                nn.Sigmoid()
-            )
+        self.feature_name = args.feature_name
+        if self.feature_name == "":
+            if input_dim == 512:
+                self.classifier = nn.Sequential(
+                    nn.Linear(input_dim, 128),
+                    nn.ReLU(),
+                    nn.Dropout(drop_p),
+                    nn.Linear(128, 32),
+                    nn.ReLU(),
+                    nn.Dropout(drop_p),
+                    nn.Linear(32, 1),
+                    nn.Sigmoid()
+                )
+            elif input_dim in [2048, 2049]:
+                self.classifier = nn.Sequential(
+                    nn.Linear(2048, 512),
+                    nn.ReLU(),
+                    nn.Dropout(drop_p),
+                    nn.Linear(512, 32),
+                    nn.ReLU(),
+                    nn.Dropout(drop_p),
+                    nn.Linear(32, 1),
+                    nn.Sigmoid()
+                )
+            elif input_dim == 2560:
+                self.classifier = nn.Sequential(
+                    nn.Linear(512, 32),
+                    nn.Linear(2048, 512),
+                    # nn.ReLU(),
+                    # nn.Dropout(drop_p),
+                    nn.Linear(512, 32),
+                    # nn.ReLU(),
+                    # nn.Dropout(drop_p),
+                    nn.Linear(32, 1),
+                    nn.Sigmoid()
+                )
+            else:
+                self.classifier = nn.Sequential(
+                    nn.Linear(input_dim, 32),
+                    nn.ReLU(),
+                    nn.Dropout(drop_p),
+                )
         else:
             self.classifier = nn.Sequential(
-                nn.Linear(input_dim, 32),
+                nn.Linear(1024, 512),
                 nn.ReLU(),
                 nn.Dropout(drop_p),
+                nn.Linear(512, 32),
+                nn.ReLU(),
+                nn.Dropout(drop_p),
+                nn.Linear(32, 1),
+                nn.Sigmoid()
             )
         self.input_dim = args.input_dim
         self.drop_p = args.drop
@@ -60,6 +73,8 @@ class Learner(nn.Module):
 
         self.n_memory = []
         self.a_memory = []
+        self.n_caption_memory = []
+        self.a_caption_memory = []
 
         self.n_memory_0 = []
         self.a_memory_0 = []
@@ -83,6 +98,11 @@ class Learner(nn.Module):
         self.tf = Transformer(args.input_dim, args.embedding_dim, args.n_layer, args.n_head, 0)
         self.reducer_4_tf = nn.Linear(args.embedding_dim, 32)
         self.mse = torch.nn.MSELoss(reduce=False)
+        cal_method = ["mul", "mul-avg", "ss", "cos", "cos-abs", "mse", "mul-abs"]
+        self.distance = args.distance  # 计算距离的方式
+        assert self.distance in cal_method
+        self.score_cal_method = self.distance  # "mul"
+        self.saliency_cal_method = self.distance
 
         for i, param in enumerate(self.classifier.parameters()):
             self.vars.append(param)
@@ -91,6 +111,37 @@ class Learner(nn.Module):
         for layer in self.classifier:
             if type(layer) == nn.Linear:
                 nn.init.xavier_normal_(layer.weight)
+
+    def init_memory_space(self, anomaly_dataset, normal_dataset, args):
+        # 读取提前保存好的memory space，读取之后直接使用
+        # 模型会参数会改变保留memory space可能没什么用
+        # 更具保存好的snippetid。找打对应的特征量，每个epoch读取特征量，然后生成与之对应的memory，并保存到memory space中
+        #     必须使用训练数据集中的snippet， 最后两个空间都可以初始化
+        # self.inference_4_init_memory_space(anomaly_dataset, a_snippet_ids)
+        a_snippet_ids = ['203-9', '688-12']
+        n_snippet_ids = ['11-4', '22-28', "22-28"]
+        # todo 防止重复放入相同的记忆，判断是否已经存在该记忆
+        # 在目前的记忆的基础上进行修改，还是清空已经存在的记忆？
+        self.a_memory, self.a_caption_memory = self.inference_4_init_memory_space(anomaly_dataset, a_snippet_ids)
+        self.n_memory, self.n_caption_memory = self.inference_4_init_memory_space(normal_dataset, n_snippet_ids)
+        self.threshold_a_caption_score = args.threshold_caption_score
+        self.threshold_n_caption_score = args.threshold_caption_score
+
+    def inference_4_init_memory_space(self, dataset, snippet_ids):
+        self.eval()
+        memorys = []
+        captions = []
+        with torch.no_grad():
+            for snippet_id in snippet_ids:
+                # video_id, idx = snippet_id.split("-")
+                # video_id, idx = int(video_id), int(idx)
+                feature, caption = dataset.get_snippet_feature(snippet_id)
+                feature = torch.from_numpy(feature).cuda()
+                memory = self.base_model(feature, self.vars)
+                memorys.append(memory)
+                captions.append(snippet_id)
+        self.train()
+        return memorys, captions
 
     def similarity_a_n_memory_space(self):
         # cosine
@@ -103,7 +154,7 @@ class Learner(nn.Module):
         # similarity_score = torch.stack(similarity_scores).mean()
 
         # mm
-        similarity_score = torch.stack(self.n_memory).mm(torch.transpose(torch.stack(self.a_memory),0,1)).mean()
+        similarity_score = torch.stack(self.n_memory).mm(torch.transpose(torch.stack(self.a_memory), 0, 1)).mean()
 
         return similarity_score
 
@@ -128,36 +179,42 @@ class Learner(nn.Module):
 
     def _calcu_saliency_score_in_memory(self, memory):
         # cosine abs
-        # saliency_scores = []
-        # for _memory in memory:
-        #     saliency_score = torch.cosine_similarity(_memory, memory, dim=1).abs() #.median()
-        #     saliency_score = torch.nn.functional.softmax(saliency_score)  # softmax
-        #     saliency_score = saliency_score.median()  # median
-        #     saliency_scores.append(saliency_score)
-        # saliency_scores = torch.stack(saliency_scores)
-
-        # cosine no abs
-        # saliency_scores = []
-        # for _memory in memory:
-        #     saliency_score = torch.cosine_similarity(_memory, memory, dim=1)
-        #     saliency_score = (saliency_score + 1) / 2
-        #     saliency_score = saliency_score.mean()
-        #     saliency_scores.append(saliency_score)
-        # saliency_scores = torch.stack(saliency_scores)
-
-        # multiply
-        # saliency_scores = memory.mm(torch.transpose(memory, 0, 1)).mean(dim=1)
-
-        # mse two
-        # self.mse(memory, torch.transpose(memory, 0, 1))
-        saliency_scores = []
-        for memory_  in memory:
-            saliency_scores.append(self.mse(memory_, memory).mean())
-        saliency_scores = torch.stack(saliency_scores)
+        cal_method = self.saliency_cal_method
+        if cal_method == "cos-abs":
+            saliency_scores = []
+            for _memory in memory:
+                saliency_score = torch.cosine_similarity(_memory, memory, dim=1).abs()  # .median()
+                saliency_score = torch.nn.functional.softmax(saliency_score)  # softmax
+                saliency_score = saliency_score.mean()  # 也可以换成median玩玩，但结果不好
+                saliency_scores.append(saliency_score)
+            saliency_scores = torch.stack(saliency_scores)
+        elif cal_method == "cos":
+            # cosine no abs
+            saliency_scores = []
+            for _memory in memory:
+                saliency_score = torch.cosine_similarity(_memory, memory, dim=1)
+                saliency_score = (saliency_score + 1) / 2
+                saliency_score = saliency_score.mean()
+                saliency_scores.append(saliency_score)
+            saliency_scores = torch.stack(saliency_scores)
+        elif cal_method == "mul":
+            # multiply
+            saliency_scores = memory.mm(torch.transpose(memory, 0, 1)).mean(dim=1)
+        elif cal_method == "mul-abs":
+            # multiply
+            saliency_scores = memory.mm(torch.transpose(memory, 0, 1)).abs().mean(dim=1)
+        elif cal_method == "mse":
+            # mse two
+            # self.mse(memory, torch.transpose(memory, 0, 1))
+            saliency_scores = []
+            for memory_ in memory:
+                saliency_scores.append(self.mse(memory_, memory).mean())
+            saliency_scores = torch.stack(saliency_scores)
+        else:
+            raise NotImplementedError("No such saliency calculation method")
         # print(saliency_scores)
 
         return saliency_scores
-
 
     def clear_memory(self, rate=None, epoch=None):
         """按照一定的概率删除掉一部分数据"""
@@ -177,19 +234,23 @@ class Learner(nn.Module):
             indexes = [i for i in range(len(self.a_memory))]
             old_length = len(indexes)
             new_length = max(1, int(len(indexes) * rate))
-            if new_length > self.threshold_a_memory_size:
+            if new_length > self.threshold_a_memory_size:  # 设置这个判断之后几乎不会被更新
+                # if True:
                 np.random.shuffle(indexes)
                 indexes = indexes[:new_length]
                 self.a_memory = [self.a_memory[i] for i in indexes]
+                self.a_caption_memory = [self.a_caption_memory[i] for i in indexes]
                 print(f"clear a memory {old_length} -> {new_length}")
 
             indexes = [i for i in range(len(self.n_memory))]
             old_length = len(indexes)
             new_length = max(1, int(len(indexes) * rate))
             if new_length > self.threshold_n_memory_size:
+                # if True:
                 np.random.shuffle(indexes)
                 indexes = indexes[:new_length]
                 self.n_memory = [self.n_memory[i] for i in indexes]
+                self.n_caption_memory = [self.n_caption_memory[i] for i in indexes]
                 print(f"clear n memory {old_length} -> {new_length}")
 
         print("=======================ending clear memory=======================")
@@ -197,30 +258,34 @@ class Learner(nn.Module):
     def optimize_memory(self):
         """optimize_memory"""
         a_memory = []
-        print(self.threshold_a_caption_score)
-        print(self.threshold_n_caption_score)
+        a_caption_memory = []
+        print("threshold for a: ", self.threshold_a_caption_score)
+        print("threshold for n: ", self.threshold_n_caption_score)
 
         if len(self.a_memory) > self.threshold_a_memory_size:
             memory = torch.stack(self.a_memory)
             # feat_magnitudes = torch.norm(video_embeds, p=2, dim=2)
-
             # self.a_memory = self.cluster_memory(memory, self.min_a_memory_size)
 
             saliency_scores = self._calcu_saliency_score_in_memory(memory)
 
-            saliency_indexes = torch.argsort(saliency_scores)  #  选择相似度最小，特异度最大的记忆保存
+            saliency_indexes = torch.argsort(saliency_scores)  # 选择相似度最小，特异度最大的记忆保存
             # saliency_indexes = torch.argsort(saliency_scores, descending=True)  # 选择相似度最大，特异度最小的模型保存
             indexes = saliency_indexes[
                       self.optimize_topk:self.min_a_memory_size + self.optimize_topk]  # 挑选相似度最小的几个，让记忆的内容尽可能不相同
             for index in indexes:
                 a_memory.append(self.a_memory[index])
+                a_caption_memory.append(self.a_caption_memory[index])
+
             if self.update_threshold:
                 print(saliency_scores[index])
                 self.threshold_a_caption_score = min(self.threshold_a_caption_score, saliency_scores[index])
             # self.cluster_memory(torch.stack(a_memory), 3)
             print(f" {len(self.a_memory)} -> {len(indexes)}")
             self.a_memory = a_memory
+            self.a_caption_memory = a_caption_memory
         n_memory = []
+        n_caption_memory = []
         if len(self.n_memory) > self.threshold_n_memory_size:
             memory = torch.stack(self.n_memory)
             # self.n_memory = self.cluster_memory(memory, self.min_n_memory_size)
@@ -234,6 +299,8 @@ class Learner(nn.Module):
             indexes = saliency_indexes[self.optimize_topk:self.min_n_memory_size + self.optimize_topk]
             for index in indexes:
                 n_memory.append(self.n_memory[index])
+                n_caption_memory.append(self.n_caption_memory[index])
+
             if self.update_threshold:
                 print(saliency_scores[index])
                 self.threshold_n_caption_score = min(self.threshold_n_caption_score, saliency_scores[index])
@@ -241,10 +308,15 @@ class Learner(nn.Module):
             # n_memory = self.cluster_memory(torch.stack(n_memory), 3)
             print(f" {len(self.n_memory)} -> {len(indexes)}")
             self.n_memory = n_memory
+            self.n_caption_memory = n_caption_memory
+
+    def show_stored_snippet_ids(self):
+        return self.a_caption_memory, self.n_caption_memory
+
     def calculate_feature_score(self, memory, feature):
         """caption score越高，说明和其他的memory比较接近，没有保存的必要
         越低，说明是一个比较新的样本，可以用来扩张memory的空间"""
-        cal_method = ["mul", "mul-avg", "ss", "cos", "cos-abs"]
+        cal_method = self.score_cal_method
         if len(memory) == 0:
             return Variable(torch.tensor(0.5), requires_grad=True).cuda()
         # cap 特征量不是小数无法直接用于计算相似度
@@ -262,35 +334,33 @@ class Learner(nn.Module):
         #         in_feature = torch.unsqueeze(in_feature, dim=0)
         #         caption_scores.append(Variable(torch.cosine_similarity(in_feature, feature), requires_grad=True).abs())
         #     caption_score = torch.cat(caption_scores, dim=0).max()
-        # elif cal_method =="cos-abs":
-        #     # abs
-        #     caption_score = Variable(torch.cosine_similarity(torch.stack(memory, dim=0), feature),
-        #                              requires_grad=True).abs()
-        #     caption_score = torch.nn.functional.softmax(caption_score)
-        #     caption_score = caption_score.median()
-
-        # no abs
-        # caption_score = Variable(torch.cosine_similarity(torch.stack(memory, dim=0), feature),
-        #                          requires_grad=True).max()
-        # caption_score = (caption_score + 1) / 2
-
-        # if type(memory) is list:
-        # print("list")
-        # else:
-        #     raise RuntimeError("not list")
-        #     caption_score = (Variable(memory) * feature).mean(dim=1).max()  # 使用乘号来表示相似度
-        # print("cosine similarity:", caption_score.data, "multiple similarity:", caption_score1.data)
-#  相似度的计算方式， 优化记忆保存的方式，清理记忆的方式
+        if cal_method == "cos-abs":
+            # abs
+            similarity_score = Variable(torch.cosine_similarity(torch.stack(memory, dim=0), feature),
+                                      requires_grad=True).abs()
+            # caption_score = caption_score.max()
+            # 其他尝试，好像结果不好
+            # caption_score = torch.nn.functional.softmax(caption_score)
+            # caption_score = caption_score.median()
+        elif cal_method == "cos":
+            # no abs
+            similarity_score = Variable(torch.cosine_similarity(torch.stack(memory, dim=0), feature), requires_grad=True)
         # 使用乘号来表示相似度
-        caption_scores = (Variable(torch.stack(memory, dim=0)) * feature).mean(dim=1)
-        # length_feature = feature.shape[1]
-        # caption_scores = Variable(self.mse(feature, torch.stack(memory, dim=0)))/length_feature
+        elif cal_method == "mul":
+            similarity_score = (Variable(torch.stack(memory, dim=0)) * feature).mean(dim=1)
+        elif cal_method == "mul-abs":
+            similarity_score = (Variable(torch.stack(memory, dim=0)) * feature).abs().mean(dim=1)
+        elif cal_method == "mse":  # clip的特征量会比较大，可能再加个平均会比较好
+            # length_feature = feature.shape[1]
+            similarity_score = Variable(self.mse(feature, torch.stack(memory, dim=0)))
+        else:
+            raise NotImplementedError("No such cal method for score calculation")
 
         if self.topk_score == 1:
-            caption_score = caption_scores.max()
+            caption_score = similarity_score.max()
         else:
-            k = min(self.topk_score, len(caption_scores))
-            topk_caption_scores = caption_scores.topk(k=k, largest=True).values
+            k = min(self.topk_score, len(similarity_score))
+            topk_caption_scores = similarity_score.topk(k=k, largest=True).values
             caption_score = topk_caption_scores.mean()
 
         # 找到最相似的memory的距离，作为这个caption的特异性,这个数字越小，说明和这个caption相似的memory越少，也说明越有保存的价值
@@ -304,19 +374,22 @@ class Learner(nn.Module):
         #     # 找到最相似的memory的距离，作为这个caption的特异性,这个数字越小，说明和这个caption相似的memory越少，也说明越有保存的价值
         #     return caption_score
 
-    def calculate_anomaly_score(self, caption, gt, update=True):
+    def calculate_anomaly_score(self, caption, gt, update=True, idx=None):
         if gt == -1:
             memory = self.n_memory
+            caption_memory = self.n_caption_memory
             threshold = self.threshold_n_caption_score
         elif gt == 1:
             memory = self.a_memory
             threshold = self.threshold_a_caption_score
+            caption_memory = self.a_caption_memory
         else:
             raise RuntimeError("No such memory")
 
         a_caption_score = self.calculate_feature_score(self.a_memory, caption)
         n_caption_score = self.calculate_feature_score(self.n_memory, caption)
-        # print("a_caption_score:", a_caption_score, "n_caption_score:", n_caption_score, )
+        # if random.random() < 0.001:
+        #     print("a_caption_score:", a_caption_score, "n_caption_score:", n_caption_score)
         if self.training and update:
             if len(memory) > 1:
                 if gt == 1:
@@ -328,15 +401,19 @@ class Learner(nn.Module):
                 # print("feature_score:", feature_score)
                 if threshold > feature_score:
                     if random.random() < self.memory_rate:
+                        #  更新memory
                         memory.append(caption)
+                        caption_memory.append(idx)
                 # if len(memory) > self.threshold_n_memory_size
             else:
                 if random.random() < self.memory_rate:
                     memory.append(caption)
-        return a_caption_score - n_caption_score
+                    caption_memory.append(idx)
+        # return a_caption_score - n_caption_score
+        return a_caption_score / n_caption_score
         # return a_caption_score
 
-    def add_anomaly_memory(self, x):
+    def add_anomaly_memory(self, x, video_ids=None):
         batch_size = int(len(x) / 64)
         assert len(x) % 64 == 0
         k = self.a_topk
@@ -352,13 +429,19 @@ class Learner(nn.Module):
                 # caption = x[index]
                 # anomaly_score = self.calculate_anomaly_score(caption, gt, update=True)
 
-                #  添加前k个重要的记忆
+                #  选择异常的视频特征量，添加前k个重要的记忆
                 index_a = torch.argsort(x[i * 2 * 32: 2 * i * 32 + 32].sum(dim=1))[-k:]
                 # x[i * 2 * 32: 2 * i * 32 + 32].sum(dim=1)
                 index = 2 * i * 32 + index_a
-                captions = x[index]
-                for caption in captions:
-                    self.calculate_anomaly_score(caption, gt, update=True)
+                features = x[index]
+                num_snippet_per_video = 32
+                if video_ids is None:
+                    snippet_idx = None
+                else:
+                    snippet_idx = f"{video_ids[i]}-{index.item() % num_snippet_per_video}"
+
+                for feature in features:
+                    self.calculate_anomaly_score(feature, gt, update=True, idx=snippet_idx)
 
                 # 添加正常的记忆
                 # index_n = torch.argmax(output1[2 * i * 32 + 32: 2 * i * 32 + 64])
@@ -367,10 +450,44 @@ class Learner(nn.Module):
                 # gt = -1
                 # anomaly_score = self.calculate_anomaly_score(caption, gt)
 
-    def forward(self, x, vars=None, gt=None):
+    def base_model(self, x, vars):
+        if self.input_dim == 512:
+            x = x.float()
+            x = F.linear(x, vars[0], vars[1])
+            # 增加一层
+            x = F.relu(x)
+            # x = F.softmax(x)
+            x = F.dropout(x, self.drop_p, training=self.training)
+            x = F.linear(x, vars[2], vars[3])
+        elif self.input_dim in [2048, 2049] or self.feature_name != "":
+            x = x.float()
+            x = F.linear(x, vars[0], vars[1])
+            x = F.relu(x)
+            x = F.dropout(x, self.drop_p, training=self.training)
+            x = F.linear(x, vars[2], vars[3])
+        elif self.input_dim == 2560:
+            x = x.float()
+            x1 = x[:, :512]
+            x2 = x[:, 512:]
+            x1 = F.linear(x1, vars[0], vars[1])
+            x2 = F.linear(x2, vars[2], vars[3])
+            x2 = F.relu(x2)
+            x2 = F.dropout(x2, self.drop_p, training=self.training)
+            x2 = F.linear(x2, vars[4], vars[5])
+            x = x1 + x2
+        else:
+            x = x.float()
+            x = F.linear(x, vars[0], vars[1])
+            # 增加一层
+            x = F.relu(x)
+            # x = F.softmax(x)
+            x = F.dropout(x, self.drop_p, training=self.training)
+        return x
+
+    def forward(self, x, video_ids=None, vars=None, gt=None):
         if vars is None:
             vars = self.vars
-
+        # print(video_names)
         # feat_magnitudes = torch.norm(x, p=2, dim=2)  # 可以用于CLIP提取的参数
         # print(feat_magnitudes.shape)  # 10, 28  # 640, 28
 
@@ -397,43 +514,13 @@ class Learner(nn.Module):
         #     # output = self.reducer_4_tf(output)
         #     # output = attn + output
         #     x = torch.squeeze(output)
-
         # 不通过模型，直接使用特征量计算，loss一直在2以上 # AUC: 0.34005
-        if self.input_dim == 512:
-            x = x.float()
-            x = F.linear(x, vars[0], vars[1])
-            # 增加一层
-            x = F.relu(x)
-            # x = F.softmax(x)
-            x = F.dropout(x, self.drop_p, training=self.training)
-            x = F.linear(x, vars[2], vars[3])
-        elif self.input_dim == 2048:
-            # x = x.float()
-            x = F.linear(x, vars[0], vars[1])
-            x = F.relu(x)
-            x = F.dropout(x, self.drop_p, training=self.training)
-            x = F.linear(x, vars[2], vars[3])
-        elif self.input_dim == 2560:
-            x = x.float()
-            x1 = x[:, :512]
-            x2 = x[:, 512:]
-            x1 = F.linear(x1, vars[0], vars[1])
-            x2 = F.linear(x2, vars[2], vars[3])
-            x2 = F.relu(x2)
-            x2 = F.dropout(x2, self.drop_p, training=self.training)
-            x2 = F.linear(x2, vars[4], vars[5])
-            x = x1 + x2
-        else:
-            x = x.float()
-            x = F.linear(x, vars[0], vars[1])
-            # 增加一层
-            x = F.relu(x)
-            # x = F.softmax(x)
-            x = F.dropout(x, self.drop_p, training=self.training)
+
+        x = self.base_model(x, vars)
 
         if self.nk:
             if self.training:
-                self.add_anomaly_memory(x)
+                self.add_anomaly_memory(x, video_ids)
             outputs = [0 for i in range(len(x))]
 
             indexes = np.arange(len(x))
@@ -441,18 +528,26 @@ class Learner(nn.Module):
             for index in indexes:
                 caption = x[index]
                 # if index < int(len(x) // 2):
+                num_snippet_per_video = 32
+                if self.training and video_ids is not None:
+                    snippet_idx = f"{video_ids[batch_size + index // (num_snippet_per_video * 2)]}-{index % num_snippet_per_video}"
+                else:
+                    snippet_idx = None
+
                 if (index // 32) % 2 == 0:  # 如果是0~31，之类的情况
                     gt = 1  # 异常的数据
+                    # find corresponding snippet idx
                     anomaly_score = self.calculate_anomaly_score(caption, gt, update=False)
                 else:
                     gt = -1  # 正常的数据
                     if self.training:
-                        anomaly_score = self.calculate_anomaly_score(caption, gt, update=True)
+                        anomaly_score = self.calculate_anomaly_score(caption, gt, update=True, idx=snippet_idx)
                     else:
                         anomaly_score = self.calculate_anomaly_score(caption, gt, update=False)
                 outputs[index] = anomaly_score
-            outputs = torch.stack(outputs, dim=0) * x.mean(dim=1) # 0.8339315091549631
+            # outputs = torch.stack(outputs, dim=0) * x.mean(dim=1)  # 0.8339315091549631
             # outputs = torch.stack(outputs, dim=0) + x.mean(dim=1) # 0.8173835234501754
+            outputs = torch.stack(outputs, dim=0)
             outputs = torch.sigmoid(outputs)
             outputs = torch.unsqueeze(outputs, dim=1)
 
