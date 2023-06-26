@@ -76,6 +76,10 @@ if __name__ == '__main__':
 
     parser.add_argument('--LR', nargs='+', required=False, type=float)
     parser.add_argument('--init_memory', nargs='+', required=False, type=str)
+    parser.add_argument('--distance', nargs='+', required=False, type=str)
+    parser.add_argument('--a_topk', nargs='+', required=False, type=int)
+    parser.add_argument('--topk_score', nargs='+', required=False, type=int)
+    parser.add_argument('--loss_topk', nargs='+', required=False, type=int)
 
     parser.add_argument('--n_layers', nargs='+', required=False, type=int)
     parser.add_argument('--heads', nargs='+', required=False, type=int)
@@ -108,6 +112,10 @@ if __name__ == '__main__':
     append_commands("lr", args.LR, commands)
     print(commands)
     append_commands("init_memory", args.init_memory, commands)
+    append_commands("distance", args.distance, commands)
+    append_commands("a_topk", args.a_topk, commands)
+    append_commands("topk_score", args.topk_score, commands)
+    append_commands("loss_topk", args.loss_topk, commands)
     print(commands)
 
     # append_commands("n_layers", args.n_layers, commands)
@@ -149,6 +157,9 @@ if __name__ == '__main__':
                 result = run_command(command_)
                 print_red(result)
                 add_record(RECORD_FILEPATH, result)
+
+
+
 
 #
 #

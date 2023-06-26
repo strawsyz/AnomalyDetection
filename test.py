@@ -43,7 +43,7 @@ def test_abnormal():
             gt_list3 = np.concatenate((gt_list, gt_list2), axis=0)
 
             fpr, tpr, thresholds = metrics.roc_curve(gt_list3, score_list3, pos_label=1)
-            auc += metrics.auc(fpr, tpr)
+            auc = auc + metrics.auc(fpr, tpr)
 
         print('auc = {}',auc/140) 
 

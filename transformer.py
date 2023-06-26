@@ -119,17 +119,23 @@ class PositionalEncoder(nn.Module):
                     math.sin(pos / (10000 ** ((2 * i) / embedding_dim)))
                 pe[pos, i + 1] = \
                     math.cos(pos / (10000 ** ((2 * (i + 1)) / embedding_dim)))
-        pe = pe.unsqueeze(0)
+        # pe = pe.unsqueeze(0)
         self.register_buffer('pe', pe)
 
     def forward(self, x):
         x = x * math.sqrt(self.embedding_dim)
-        seq_len = x.size(1)
-        pe = Variable(self.pe[:, :seq_len], requires_grad=False)
+        seq_len = x.size(-2)
+        # pe = Variable(self.pe[:, :seq_len], requires_grad=False)
+        pe = Variable(self.pe[:seq_len], requires_grad=False)
         if x.is_cuda:
             pe.cuda()
         # print(x.shape)
         # print(pe.shape)
+        # if seq_len != 32:
+        #     for i in range(0, seq_len - 32, 32):
+        #         x[i:i + 32] += pe
+        #     x[i + 32:] = pe[:seq_len - i - 32]  # x[seq_len % 32]
+        # else:
         x = x + pe
         return x
 
@@ -138,7 +144,7 @@ class Encoder(nn.Module):
     def __init__(self, vocab_size, embedding_dim, N, heads):
         super().__init__()
         self.N = N
-        self.pe = PositionalEncoder(embedding_dim, max_seq_len=32)
+        self.pe = PositionalEncoder(embedding_dim, max_seq_len=10000)
         if vocab_size != embedding_dim:
             self.ln = nn.Linear(vocab_size, embedding_dim)
         else:
@@ -371,7 +377,12 @@ class TFLeaner(nn.Module):
             return output
         else:
             # print("x.shape", x.shape)
-            output = self.tf(x)
+            num_clips = x.size(0)
+            output = []
+            for i in range(0, num_clips, 32):
+                output_tmp = self.tf(torch.unsqueeze(x[i:i + 32], dim=0))
+                output.append(output_tmp)
+            output = torch.cat(output,dim=1)
             output = output.squeeze()
             output = F.sigmoid(output)
             return output

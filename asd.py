@@ -57,13 +57,42 @@ import torch
 
 
 if __name__ == '__main__':
-    temp_data = [0.6796410083501576, 0.5, 0.5, 0.4989147261468929, 0.5, 0.5]
-    # temp_data = [0.3099559765322104, 0.7043553725272184, 0.7008323699944315, 0.7355491793524616, 0.7344436992589234, 0.7372540557233029, 0.725538716584849, 0.7312445723783755, 0.7343317904654451, 0.7248407706815164, 0.7288006708813064]
-    temp_data = [i*100 for i in temp_data]
-    plt.plot(temp_data)
-    plt.xlabel("Epoch")
-    plt.ylabel("AUC (%)")
-    plt.show()
+    t = [1,2,3,5,3]
+    res = np.argsort(t)
+    print(res)
+    print([t[idx] for idx in res])
+    # assert  2< 1, print("asser error")
+    # t = 0.235235435
+    # print(f"{t:.2}")
+    # test
+    # data = np.load(r"/workspace/AnomalyDetection/tmp/01_001_i3d.npy",allow_pickle=True)
+    # data = np.load(r"/workspace/AnomalyDetection/tmp/01_0015_i3d.npy",allow_pickle=True)
+    # train
+    # data = np.load(r"/workspace/AnomalyDetection/tmp/01_0014_i3d.npy", allow_pickle=True)
+    # data = np.load(r"/workspace/datasets/ucf-crime/custom_dataset/train.npy", allow_pickle=True)
+    # data = np.load(r"/workspace/datasets/ucf-crime/uio/32b/test/anomaly/Arrest001_x264-96.npy", allow_pickle=True)
+    # data = np.load(r"/workspace/datasets/ucf-crime/swinbert/captions/test/normal/Normal_Videos_063_x264.npy", allow_pickle=True)
+    # print(data)
+    # print(data.shape)
+    # print(data[0].shape)
+
+    # for filename in os.listdir("/workspace/datasets/ucf-crime/custom_anno_2"):
+    #     data = np.load(os.path.join(r"/workspace/datasets/ucf-crime/custom_anno_2", filename), allow_pickle=True)
+    #     print(filename)
+    #     # print(data)
+    #     print(data.shape)
+    #     print("=====================")
+
+    #####     重要      ############
+    # temp_data = [0.6796410083501576, 0.5, 0.5, 0.4989147261468929, 0.5, 0.5]
+    # # temp_data = [0.3099559765322104, 0.7043553725272184, 0.7008323699944315, 0.7355491793524616, 0.7344436992589234, 0.7372540557233029, 0.725538716584849, 0.7312445723783755, 0.7343317904654451, 0.7248407706815164, 0.7288006708813064]
+    # temp_data = [i*100 for i in temp_data]
+    # plt.plot(temp_data)
+    # plt.xlabel("Epoch")
+    # plt.ylabel("AUC (%)")
+    # plt.show()
+    ########          重要          ###################
+
     # 使用mul的时候，有些分数是固定，989多个分数没有变化
     # 输出的异常文书几乎都保持着0
     # a_caption_score: tensor(11.3593, device='cuda:0') n_caption_score: tensor(24.8932, device='cuda:0')

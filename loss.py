@@ -35,10 +35,10 @@ def MIL(y_pred, batch_size, is_transformer=0, model=None, args=None):
         y_normal = y_pred[i, 32:]
 
         if k == 1:
-            y_anomaly_max = torch.max(y_anomaly)  # anomaly
+            y_anomaly_max = torch.max(y_anomaly)  # anomaly样本的最大异常值
         else:
             values, indices = y_anomaly.topk(k=k, dim=0, largest=True, sorted=True)
-            y_anomaly_max = torch.mean(values)
+            y_anomaly_max = torch.mean(values)  # anomaly样本的最大异常值
 
         index_anomaly = torch.argmax(y_anomaly)
         indexes_anomaly.append(index_anomaly)
