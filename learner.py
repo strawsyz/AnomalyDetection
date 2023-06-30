@@ -45,6 +45,8 @@ class Learner(nn.Module):
         self.topk_score = args.topk_score  # 选择计算top-k的发呢书
         self.optimize_topk = 0  # 优化的使用，不保存最前面的几个值，来避免掉
         self.update_threshold = args.update_threshold
+
+        self.caption_temp = args.caption_temp
         # self.tf = Transformer(args.input_dim, args.embedding_dim, args.n_layer, args.n_head, 0)
 
         if input_dim == 512:
@@ -236,8 +238,10 @@ class Learner(nn.Module):
         return memory
         # return cluster_centers.cuda()
 
-    def _calcu_saliency_score_in_memory(self, memory):
-        cal_method = self.saliency_cal_method
+    def _calcu_saliency_score_in_memory(self, memory, cal_method=None):
+        if cal_method is None:
+            cal_method = self.saliency_cal_method
+
         if cal_method == "cos-abs":
             saliency_scores = []
             for _memory in memory:
@@ -331,15 +335,24 @@ class Learner(nn.Module):
 
         if len(self.a_memory) > self.threshold_a_memory_size:
             memory = torch.stack(self.a_memory)
+            caption_embedding = torch.stack(self.a_caption_embedding)
             # feat_magnitudes = torch.norm(video_embeds, p=2, dim=2)
             # self.a_memory = self.cluster_memory(memory, self.min_a_memory_size)
-
             saliency_scores = self._calcu_saliency_score_in_memory(memory)
+            saliency_scores_caption = self._calcu_saliency_score_in_memory(caption_embedding, cal_method="cos")
+            if self.caption_temp == -1:
+                saliency_scores = saliency_scores_caption
+            elif self.caption_temp == 0:
+                pass
+            else:
+                saliency_scores = (saliency_scores_caption * self.caption_temp + saliency_scores) / (
+                        1 + self.caption_temp)
 
-            saliency_indexes = torch.argsort(saliency_scores)  # 选择相似度最小，特异度最大的记忆保存
-            # saliency_indexes = torch.argsort(saliency_scores, descending=True)  # 选择相似度最大，特异度最小的模型保存
+            # saliency_indexes = torch.argsort(saliency_scores)  # 选择相似度最小，特异度最大的记忆保存
+            saliency_indexes = torch.argsort(saliency_scores, descending=True)  # 选择相似度最大，特异度最小的模型保存
             indexes = saliency_indexes[
                       self.optimize_topk:self.min_a_memory_size + self.optimize_topk]  # 挑选相似度最小的几个，让记忆的内容尽可能不相同
+            print(saliency_scores)
             for index in indexes:
                 a_memory.append(self.a_memory[index])
                 a_caption_memory.append(self.a_caption_memory[index])
@@ -348,11 +361,13 @@ class Learner(nn.Module):
                 # print(saliency_scores[index])
                 # saliency_scores.topk(4, largest=False).values.mean()
                 # saliency_scores = self._calcu_saliency_score_in_memory(torch.stack(a_memory))
-                # threshold_ = saliency_scores.mean()
+                threshold_ = saliency_scores.mean()
+                # threshold_ = saliency_scores[index]
                 # threshold_ = saliency_scores.topk(max(1, int(saliency_scores.shape[-1] * 0.5)), largest=True).values.mean()
-                self.threshold_a_caption_score = min(self.threshold_a_caption_score, saliency_scores[index])
                 # self.threshold_a_caption_score = min(self.threshold_a_caption_score, threshold_)
-                # self.threshold_a_caption_score = threshold_
+                # 获得top-k小的相似度作为指标
+                # self.threshold_a_caption_score = min(self.threshold_a_caption_score, saliency_scores[index])
+                self.threshold_a_caption_score = threshold_
 
             # clustering memory, bad result
             # self.cluster_memory(torch.stack(a_memory), 3)
@@ -400,16 +415,17 @@ class Learner(nn.Module):
     def show_stored_snippet_ids(self):
         return self.a_caption_memory, self.n_caption_memory
 
-    def max_score(self, similarity_scores):
-        if self.topk_score == 1:
+    def max_score(self, similarity_scores, top_k):
+        """计算top-k的参数"""
+        if top_k == 1:
             caption_score = similarity_scores.max()
         else:
-            k = min(self.topk_score, similarity_scores.shape[-1])
+            k = min(top_k, similarity_scores.shape[-1])
             topk_caption_scores = similarity_scores.topk(k=k, largest=True).values
             caption_score = topk_caption_scores.mean()
         return caption_score
 
-    def calculate_feature_score(self, memory, feature, caption_embedding_memory=None, caption_embedding=None):
+    def calculate_memory_similarity(self, memory, feature, caption_embedding_memory=None, caption_embedding=None):
         """caption score越高，说明和其他的memory比较接近，没有保存的必要
         越低，说明是一个比较新的样本，可以用来扩张memory的空间"""
         cal_method = self.score_cal_method
@@ -450,16 +466,22 @@ class Learner(nn.Module):
         else:
             raise NotImplementedError("No such cal method for score calculation")
 
-        feature_similarity_score = self.max_score(similarity_score)
+        feature_similarity_score = self.max_score(similarity_score, top_k=self.topk_score)
+
+        # 计算caption的相似度
         caption_similarity_score = Variable(torch.cosine_similarity(caption_embedding_memory_, caption_embedding),
                                             requires_grad=True)
-        caption_score_2 = self.max_score(caption_similarity_score)
-
         # 找到最相似的memory的距离，作为这个caption的特异性,这个数字越小，说明和这个caption相似的memory越少，也说明越有保存的价值
-        # return (caption_score + caption_score_2) / 2
-        return feature_similarity_score
-        # a = 1.0
-        # return (feature_similarity_score + caption_score_2 * a) / (1 + a)
+        caption_score_2 = self.max_score(caption_similarity_score, top_k=self.topk_score)
+
+        if self.caption_temp == -1:
+            return caption_score_2
+        elif self.caption_temp == 0:
+            return feature_similarity_score
+        else:
+            # 基于视频特征量的相似度和caption的相似度，来进行计算
+            return (feature_similarity_score + caption_score_2 * self.caption_temp) / (1 + self.caption_temp)
+
         # if len(caption_scores) == 1:
         #     return caption_scores[0]
         # else:
@@ -471,6 +493,7 @@ class Learner(nn.Module):
     def _add_memory(self, feature_memory, caption_id_memory, feature, idx, caption_embedding_memory=None,
                     caption_embedding=None):
         if random.random() < self.memory_rate and not idx in caption_id_memory:
+            #  还没有保存过对应的记忆，并且能够随机保存数据
             feature_memory.append(feature.clone().detach())
             caption_id_memory.append(idx)
             if caption_embedding is not None:
@@ -490,8 +513,8 @@ class Learner(nn.Module):
         else:
             raise RuntimeError("No such memory")
 
-        a_caption_score = self.calculate_feature_score(self.a_memory, feature, self.a_caption_embedding,
-                                                       caption_embedding)
+        a_caption_score = self.calculate_memory_similarity(self.a_memory, feature, self.a_caption_embedding,
+                                                           caption_embedding)
         # n_caption_score = self.calculate_feature_score(self.n_memory, caption)
 
         if self.training and update:
@@ -542,27 +565,40 @@ class Learner(nn.Module):
                 # x[i * 2 * 32: 2 * i * 32 + 32].sum(dim=1)
                 # print(index_a)
 
-                batch_anomaly_feature = x[i * 2 * 32: 2 * i * 32 + 32]
+                # 获得异常的特征量, 一个视频中的异常的特征量
+                # batch_anomaly_feature = x[i * 2 * 32: i * 2 * 32 + 32]
+                # batch_normal_feature = x[i * 2 * 32 + 32: 2 * i * 32 + 64]
+                # 使用world embedding作为视频的特征量
+                batch_anomaly_feature = caption_embeddings[i * 2 * 32: i * 2 * 32 + 32]
+                batch_normal_feature = caption_embeddings[i * 2 * 32 + 32: 2 * i * 32 + 64]
                 # saliency_scores = torch.cosine_similarity(batch_anomaly_feature, batch_anomaly_feature, dim=1).abs()
                 # todo 这种相似度计算方式是否合适
                 # saliency_scores = torch.cosine_similarity(batch_anomaly_feature, batch_anomaly_feature.T, dim=1)
 
-                saliency_scores = []
-                for _memory in batch_anomaly_feature:
-                    saliency_score = torch.cosine_similarity(_memory, batch_anomaly_feature, dim=1)
-                    saliency_score = (saliency_score + 1) / 2  # 帮助呢个所有saliency score只有正数
-                    saliency_score
-                    saliency_score = saliency_score.mean()
-                    saliency_scores.append(saliency_score)
-                saliency_scores = torch.stack(saliency_scores)
+                # 计算相邻特征量之间的相似度，异常发生前后的动作往往变化比较大
 
-                saliency_scores = torch.nn.functional.softmax(saliency_scores)  # softmax
-                index_a = torch.argsort(saliency_scores)[-self.a_topk:]
-                # index_a = torch.argsort(saliency_scores)[:self.a_topk]
+                normal_scores = []
+                length = 5
+                num_snippets = len(batch_anomaly_feature)
+                for idx, _memory in enumerate(batch_anomaly_feature):
+                    start = max(idx - length // 2, 0)
+                    end = min(start + length, num_snippets)
+                    # 与正常的片段越是相似，就越是normal
+                    normal_score = torch.cosine_similarity(_memory, batch_normal_feature, dim=1).mean()
+                    # 在异常视频中，一个片段和它附近的片段的变化越小。相似度就越大，是异常的可能性就越小
+                    normal_score = normal_score + torch.cosine_similarity(_memory, batch_normal_feature[start:end],
+                                                                            dim=1).mean()
+                    normal_scores.append(normal_score)
+                normal_scores = torch.stack(normal_scores)
+
+                # saliency_scores = torch.nn.functional.softmax(saliency_scores)  # softmax
+                # index_a = torch.argsort(normal_scores)[-self.a_topk:]   # 默认从小到达排序
+                # 挑选normal score最小的视频作为最有可能的异常候补
+                index_a = torch.argsort(normal_scores)[:self.a_topk]  # 跳过第一个特异值，也可以考虑做一个平滑
                 # saliency_score = saliency_score.mean()  # 也可以换成median玩玩，但结果不好
                 # saliency_scores.append(saliency_score)
 
-                indexes = 2 * i * 32 + index_a
+                indexes = i * 2 * 32 + index_a
                 # features = x[indexes]
                 num_snippet_per_video = 32
                 for index in indexes:
@@ -774,6 +810,7 @@ class Learner(nn.Module):
             # outputs = torch.stack(outputs, dim=0) * x.mean(dim=1)  # 0.8339315091549631
             # outputs = torch.stack(outputs, dim=0) + x.mean(dim=1) # 0.8173835234501754
             outputs = torch.stack(outputs, dim=0)
+            outputs = torch.sigmoid(outputs)
             if self.training:
                 return outputs, a_snippet_ids
             else:
@@ -803,8 +840,11 @@ class Learner(nn.Module):
             outputs = x.mean(dim=1)
             # outputs += output_from_caption_embedding
             outputs = F.sigmoid(outputs)
-            outputs = outputs + torch.sigmoid(output_from_caption_embedding)
-            return outputs
+            outputs = outputs  # + torch.sigmoid(output_from_caption_embedding)
+            if self.training:
+                return outputs, []
+            else:
+                return outputs
         # inputs = torch.clone(x)
         # x = F.relu(x)  # 改善了0.02
         # x = F.dropout(x, self.drop_p, training=self.training)  # 改善了不少  #0.5191871161161531

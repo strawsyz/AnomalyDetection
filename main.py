@@ -27,13 +27,13 @@ def train(epoch):
     for batch_idx, (normal_inputs, anomaly_inputs) in enumerate(zip(normal_train_loader, anomaly_train_loader)):
         i += 1
         # if args.input_dim in [2049, 1280, 1024]:
-        if "uio" in args.feature_name:
-            anomaly_inputs, a_names, anomaly_embedding = anomaly_inputs
-            normal_inputs, n_names, normal_embedding = normal_inputs
-            names = torch.cat([a_names, n_names], dim=0)  # (1,60)
-        else:
-            anomaly_inputs, anomaly_embedding = anomaly_inputs
-            normal_inputs, normal_embedding = normal_inputs
+        # if "uio" in args.feature_name:
+        anomaly_inputs, a_names, anomaly_embedding = anomaly_inputs
+        normal_inputs, n_names, normal_embedding = normal_inputs
+        names = torch.cat([a_names, n_names], dim=0)  # (1,60)
+        # else:
+        #     anomaly_inputs, anomaly_embedding = anomaly_inputs
+        #     normal_inputs, normal_embedding = normal_inputs
         # print(a_names)
         inputs = torch.cat([anomaly_inputs, normal_inputs], dim=1)
         embeddings = torch.cat([anomaly_embedding, normal_embedding], dim=1)
@@ -102,19 +102,25 @@ def test_abnormal(epoch, patient, args):
             score_list = np.zeros(num_frames)
             # print(num_frames)
 
+            step = np.round(np.linspace(0, num_frames // 16, 33))
+            for j in range(32):
+                score_list[int(step[j]) * 16:(int(step[j + 1])) * 16] = score[j]
+
             # if args.input_dim in [2048, 512]:
             #     # 将视频分为32个部分然后分别计算分数
             #     step = np.round(np.linspace(0, num_frames // 16, 33))
             #     for j in range(32):
             #         score_list[int(step[j]) * 16:(int(step[j + 1])) * 16] = score[j]
             # else:
-            for idx, i in enumerate(range(0, num_frames - 16, 16)):
-                assert len(score_list) > i + 16, "len of list:" + str(len(score_list)) + ", index: " + str(i + 16)
-                # if i + 16 == len(score_list):
-                score_list[i:] = score[idx]
-                # else:
-                #     score_list[i:i + 16] = score[idx]
-            score_list[i + 16:] = score[idx]
+            # 消除的代码0627
+            # for idx, i in enumerate(range(0, num_frames - 16, 16)):
+            #     assert len(score_list) > i + 16, "len of list:" + str(len(score_list)) + ", index: " + str(i + 16)
+            #     score_list[i:] = score[idx]
+            # score_list[i + 16:] = score[idx]
+
+            # if i + 16 == len(score_list):
+            # else:
+            #     score_list[i:i + 16] = score[idx]
             # assert score_list[-1] != 0, score_list
 
             # 分别处理各自的分数
@@ -135,16 +141,20 @@ def test_abnormal(epoch, patient, args):
             score2 = score2.cpu().detach().numpy()
             score_list2 = np.zeros(frames2[0])
 
+            step2 = np.round(np.linspace(0, frames2[0] // 16, 33))
+            for kk in range(32):
+                score_list2[int(step2[kk]) * 16:(int(step2[kk + 1])) * 16] = score2[kk]
+
             # if args.input_dim in [2048, 512]:
             #     ### 将测试结果分为21个断层，然后计算结果
             #     step2 = np.round(np.linspace(0, frames2[0] // 16, 33))
             #     for kk in range(32):
             #         score_list2[int(step2[kk]) * 16:(int(step2[kk + 1])) * 16] = score2[kk]
             # else:
-            num_frames = frames2[0]
-            for idx, i in enumerate(range(0, num_frames - 16, 16)):
-                score_list2[i:i + 16] = score2[idx]
-            score_list2[i + 16:] = score2[idx]
+            # num_frames = frames2[0]
+            # for idx, i in enumerate(range(0, num_frames - 16, 16)):
+            #     score_list2[i:i + 16] = score2[idx]
+            # score_list2[i + 16:] = score2[idx]
             # assert score_list2[-1] != 0 ,score2[idx]
 
             gt_list2 = np.zeros(frames2[0])
@@ -160,7 +170,8 @@ def test_abnormal(epoch, patient, args):
             fpr, tpr, thresholds = metrics.roc_curve(gt_list3, score_list3, pos_label=1)
             sample_auc = metrics.auc(fpr, tpr)
             auc += sample_auc
-            if random.random() < 0.1:
+            # if random.random() < 0.1:
+            if anomaly_video_name == "Arson/Arson022_x264.mp4":
                 # print(video_names, video_names2)
                 plt.plot(gt_list3, label='gt')
                 plt.plot(score_list3, label='prediction')
@@ -223,6 +234,8 @@ def set_seed(random_state: int = 0):
 if __name__ == '__main__':
     import warnings
 
+    os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
+
     warnings.filterwarnings("ignore")
 
     parser = argparse.ArgumentParser(description='PyTorch MIL Training')
@@ -264,10 +277,14 @@ if __name__ == '__main__':
     parser.add_argument('--check_caption_memory', default=False, action='store_true', help='nk')
 
     parser.add_argument('--loss_topk', default=1, type=int, help='loss_topk')
+    parser.add_argument('--seed', default=0, type=int, help='seed, previous default value is 0')
+    parser.add_argument('--caption_temp', default=0.1, type=float,
+                        help='temperature of caption, -1 :only use caption embedding, 0: only use video features')
 
     args = parser.parse_args()
 
-    set_seed(0)
+    set_seed(args.seed)
+    # set_seed(0)
 
     feature_names = ["uio_caption", "uio_vqa1", "uio_caption_vqa1", "uio_opt_region", "uio_fixed_region", "clip", "i3d",
                      "i3d_clip", "uio_caption_vqa1_1280", "uio_caption_vqa1_68", "uio_caption_34", "uio_vqa1_34",
@@ -377,9 +394,8 @@ if __name__ == '__main__':
     # 7
     # snippet_idxs =  ['709-25', '62-5', '391-21', '37-13', '682-2', '344-14', '588-7', '372-20', '68-16', '262-21', '334-8', '228-19', '38-16', '622-10', '533-18', '369-12', '280-13', '549-2']
     # 11
-    snippet_idxs = ['549-1', '62-23', '334-29', '369-4', '37-21', '372-21', '622-9', '588-25', '709-24', '38-4', '344-24', '228-10', '280-15', '682-31', '262-0', '68-22', '391-25', '533-15']
-    anomaly_train_dataset.check_captions_from_snippet_idxs(snippet_idxs)
-
+    # snippet_idxs = ['549-1', '62-23', '334-29', '369-4', '37-21', '372-21', '622-9', '588-25', '709-24', '38-4', '344-24', '228-10', '280-15', '682-31', '262-0', '68-22', '391-25', '533-15']
+    # anomaly_train_dataset.check_captions_from_snippet_idxs(snippet_idxs)
 
     for epoch in range(0, args.epoch):
         # 训练之前初始化一下记忆空间
@@ -388,17 +404,17 @@ if __name__ == '__main__':
 
         train(epoch)
 
-        # print results
+        # print captions saved in the memory space
         if args.check_caption_memory:
             a_caption_memory, n_caption_memory = model.show_stored_snippet_ids()
             print("a_caption_memory: ")
             for snippet_id in a_caption_memory:
                 result = anomaly_train_dataset.show_caption(snippet_id)
-                print(snippet_id, result)
-            print("n_caption_memory: ")
-            for snippet_id in n_caption_memory:
-                result = normal_train_dataset.show_caption(snippet_id)
-                print(snippet_id, result)
+                print(f"{snippet_id}\t{result}")
+            # print("n_caption_memory: ")
+            # for snippet_id in n_caption_memory:
+            #     result = normal_train_dataset.show_caption(snippet_id)
+            #     print(snippet_id, result)
 
         auc, patient = test_abnormal(epoch, patient, args)
         aucs.append(auc)

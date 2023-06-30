@@ -57,10 +57,18 @@ import torch
 
 
 if __name__ == '__main__':
-    t = [1,2,3,5,3]
-    res = np.argsort(t)
-    print(res)
-    print([t[idx] for idx in res])
+    # t = [1,2,3,5,3]
+    # res = np.argsort(t)
+    # print(res)
+    # print([t[idx] for idx in res])
+    root_path = rf"/workspace/datasets/ucf-crime/uio/caption_embeddings/test/normal"
+    root_path = rf"/workspace/datasets/ucf-crime/swinbert/caption_embeddings/test/normal"
+    import os
+    for filename in os.listdir(root_path):
+        data = np.load(os.path.join(root_path, filename) , allow_pickle=True)
+        print(data)
+
+
     # assert  2< 1, print("asser error")
     # t = 0.235235435
     # print(f"{t:.2}")

@@ -9,6 +9,8 @@ import numpy as np
 # from utils import process_feat
 import torch
 from torch.utils.data import DataLoader
+
+
 # torch.set_default_tensor_type('torch.FloatTensor')
 
 
@@ -27,8 +29,14 @@ class Normal_Loader(Dataset):
         split_tmp = "train" if is_train else "test"
         mode_tmp = "normal"
 
-        self.caption_root_path = rf"/workspace/datasets/ucf-crime/uio/captions/train/normal"
-        self.caption_embedding_root_path = rf"/workspace/datasets/ucf-crime/uio/caption_embeddings/{split_tmp}/{mode_tmp}"
+        self.caption_type = "swinbert"
+        if self.caption_type == "uio":
+            self.caption_embedding_root_path = rf"/workspace/datasets/ucf-crime/uio/caption_embeddings/{split_tmp}/{mode_tmp}"
+            self.caption_root_path = rf"/workspace/datasets/ucf-crime/uio/captions/train/normal"
+        elif self.caption_type == "swinbert":
+            self.caption_embedding_root_path = rf"/workspace/datasets/ucf-crime/swinbert/caption_embeddings/{split_tmp}/{mode_tmp}"
+            self.caption_root_path = rf"/workspace/datasets/ucf-crime/swinbert/captions/train/normal"
+
         self.path = self.get_dataset_root_path(path, split_tmp, mode_tmp)
 
         if self.is_train == 1:
@@ -112,16 +120,30 @@ class Normal_Loader(Dataset):
             name = self.data_list[idx][:-1]
             feature = self.get_feature(name, normal_mode=True)
             embedding = self.get_semantic_embedding(name)
+            if len(embedding) > len(feature):
+                embedding = embedding[:len(feature)]
             if "uio" in self.feature_name:
                 return feature, idx, embedding
             else:
-                return feature, embedding
+                return feature, idx, embedding
         else:
             name, frames, gts = self.data_list[idx].split(' ')[0], int(self.data_list[idx].split(' ')[1]), int(
                 self.data_list[idx].split(' ')[2][:-1])
             feature = self.get_feature(name, normal_mode=True)
             embedding = self.get_semantic_embedding(name)
             # feature = np.array([i for i in feature if (i[-1]!=0).sum() != 0])
+            if self.caption_type == "uio" and self.feature_name == "i3d":
+                num_captions = embedding.shape[0]
+                gap_between_captions = int(num_captions / len(feature))
+                start_caption = int(gap_between_captions / 2)
+                idx = [int(i) for i in
+                       np.linspace(start_caption, len(embedding) - 1 - start_caption, num=len(feature), endpoint=True,
+                                   retstep=False, dtype=None)]
+                embedding = embedding[idx]
+            elif self.caption_type == "swinbert":
+                if len(embedding) > len(feature):
+                    embedding = embedding[:len(feature)]
+
             feature = feature[:len(embedding)]
             return feature, gts, frames, name, embedding
 
@@ -131,7 +153,12 @@ class Normal_Loader(Dataset):
         video_name = video_name.split("/")[-1].replace(".mp4", "")
         caption_filepath = os.path.join(self.caption_root_path, video_name + ".npy")
         data = np.load(caption_filepath, allow_pickle=True).item()
-        return data["orginal"][int(idx)]
+        if self.caption_type == "uio":
+            return data["orginal"][int(idx)]
+        elif self.caption_type == "swinbert":
+            video_name = f"{video_name}-{idx}.avi"
+            return data[video_name][0][0]
+
 
     def get_snippet_feature(self, snippet_id):
         video_id, idx = snippet_id.split("-")
@@ -149,7 +176,8 @@ class Normal_Loader(Dataset):
 
         embedding = self.get_semantic_embedding(video_name)[idx]
         feature = features[idx]
-        return feature, caption,embedding
+        return feature, caption, embedding
+
 
 class Anomaly_Loader(Dataset):
     """
@@ -166,8 +194,14 @@ class Anomaly_Loader(Dataset):
         split_tmp = "train" if is_train else "test"
         mode_tmp = "anomaly"
 
-        self.caption_root_path = rf"/workspace/datasets/ucf-crime/uio/captions/train/anomaly"
-        self.caption_embedding_root_path = rf"/workspace/datasets/ucf-crime/uio/caption_embeddings/{split_tmp}/{mode_tmp}"
+        self.caption_type = "swinbert"
+        if self.caption_type == "uio":
+            self.caption_embedding_root_path = rf"/workspace/datasets/ucf-crime/uio/caption_embeddings/{split_tmp}/{mode_tmp}"
+            self.caption_root_path = rf"/workspace/datasets/ucf-crime/uio/captions/train/anomaly"
+        elif self.caption_type == "swinbert":
+            self.caption_embedding_root_path = rf"/workspace/datasets/ucf-crime/swinbert/caption_embeddings/{split_tmp}/{mode_tmp}"
+            self.caption_root_path = rf"/workspace/datasets/ucf-crime/swinbert/captions/train/anomaly"
+
         self.path = self.get_dataset_root_path(path, split_tmp, mode_tmp)
 
         if self.is_train == 1:
@@ -181,7 +215,7 @@ class Anomaly_Loader(Dataset):
 
     def get_semantic_embedding(self, name):
         name = name.split("/")[-1].replace(".mp4", "")
-        embedding = np.load(os.path.join(self.caption_embedding_root_path, f"{name}.npy"),allow_pickle=True)
+        embedding = np.load(os.path.join(self.caption_embedding_root_path, f"{name}.npy"), allow_pickle=True)
         return embedding
 
     def get_dataset_root_path(self, path, split_, mode_):
@@ -251,11 +285,12 @@ class Anomaly_Loader(Dataset):
 
             feature = self.get_feature(name)
             embedding = self.get_semantic_embedding(name)
-
+            if len(embedding) > len(feature):
+                embedding = embedding[:len(feature)]
             if "uio" in self.feature_name:
                 return feature, idx, embedding
             else:
-                return feature, embedding
+                return feature, idx, embedding
         else:
             name, frames, gts = self.data_list[idx].split('|')[0], int(self.data_list[idx].split('|')[1]), \
                 self.data_list[idx].split('|')[2][1:-2].split(',')
@@ -265,6 +300,18 @@ class Anomaly_Loader(Dataset):
             #     self.data_list[idx].split(' ')[2][:-1])
             feature = self.get_feature(name)
             # feature = np.array([i for i in feature if (i[-1]!=0).sum() != 0])
+
+            # num_captions = embedding.shape[0]
+            # gap_between_captions = int(num_captions / len(feature))
+            # start_caption = int(gap_between_captions / 2)
+            # idx = [int(i) for i in
+            #        np.linspace(start_caption, len(embedding) - 1 - start_caption, num=len(feature), endpoint=True,
+            #                    retstep=False, dtype=None)]
+            # embedding = embedding[idx]
+
+            if len(embedding) > len(feature):
+                embedding = embedding[:len(feature)]
+
             feature = feature[:len(embedding)]
             return feature, gts, frames, name, embedding
 
@@ -274,7 +321,11 @@ class Anomaly_Loader(Dataset):
         video_name = video_name.split("/")[-1].replace(".mp4", "")
         caption_filepath = os.path.join(self.caption_root_path, video_name + ".npy")
         data = np.load(caption_filepath, allow_pickle=True).item()
-        return data["orginal"][int(idx)]
+        if self.caption_type == "uio":
+            return data["orginal"][int(idx)]
+        elif self.caption_type == "swinbert":
+            video_name = f"{video_name}-{idx}.avi"
+            return data[video_name][0][0]
 
     def get_snippet_feature(self, snippet_id):
         video_id, idx = snippet_id.split("-")
@@ -294,7 +345,6 @@ class Anomaly_Loader(Dataset):
 
         return feature, caption, embedding
 
-
     def check_captions_from_snippet_idxs(self, snippet_idxs):
         idxs = [int(item.split('-')[0]) for item in snippet_idxs]
         idxs = np.argsort(idxs)
@@ -302,6 +352,7 @@ class Anomaly_Loader(Dataset):
             snippet_idx = snippet_idxs[idx]
             feature, caption, embedding = self.get_snippet_feature(snippet_idx)
             print(f"{snippet_idx} : \t{caption}")
+
 
 def get_feature_filepath(video_id, test_mode, normal_mode, mix=False):
     root_path = "/workspace/datasets/ucf-crime/CLIP/image"
@@ -335,6 +386,7 @@ def get_clip_feature(video_id, test_mode, normal_mode, mix=False):
         # feature = np.squeeze(np.array([feature[i].cpu().detach().numpy() for i in range(len(feature))]))
     return feature
 
+
 class ShanghaiTechDataset():
     def __init__(self, args, is_normal=True, transform=None, test_mode=False):
         self.modality = args.modality
@@ -351,7 +403,7 @@ class ShanghaiTechDataset():
             else:
                 self.rgb_list_file = 'list/ucf-i3d.list'
 
-        self.tranform = transform
+        self.transform = transform
         self.test_mode = test_mode
         self._parse_list()
         self.num_frame = 0
@@ -386,8 +438,8 @@ class ShanghaiTechDataset():
         features = np.load(self.list[index].strip('\n'), allow_pickle=True)
         features = np.array(features, dtype=np.float32)
 
-        if self.tranform is not None:
-            features = self.tranform(features)
+        if self.transform is not None:
+            features = self.transform (features)
         if self.test_mode:
             return features
         else:
