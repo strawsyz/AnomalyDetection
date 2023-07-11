@@ -54,6 +54,15 @@ import torch
 #         )
 #
 #     return cl, c
+def process_feat(feat, length):
+    new_feat = np.zeros((length, feat.shape[1])).astype(np.float32) #UCF(32,2048)
+    r = np.linspace(0, len(feat), length+1, dtype=np.int) #(33,)
+    for i in range(length):
+        if r[i]!=r[i+1]:
+            new_feat[i,:] = np.mean(feat[r[i]:r[i+1],:], 0)
+        else:
+            new_feat[i,:] = feat[r[i],:]
+    return new_feat
 
 
 if __name__ == '__main__':
@@ -61,13 +70,33 @@ if __name__ == '__main__':
     # res = np.argsort(t)
     # print(res)
     # print([t[idx] for idx in res])
-    root_path = rf"/workspace/datasets/ucf-crime/uio/caption_embeddings/test/normal"
-    root_path = rf"/workspace/datasets/ucf-crime/swinbert/caption_embeddings/test/normal"
-    import os
-    for filename in os.listdir(root_path):
-        data = np.load(os.path.join(root_path, filename) , allow_pickle=True)
-        print(data)
+    # root_path = rf"/workspace/datasets/ucf-crime/uio/caption_embeddings/test/normal"
+    # root_path = rf"/workspace/datasets/ucf-crime/swinbert/caption_embeddings/test/normal"
+    # import os
+    # for filename in os.listdir(root_path):
+    #     data = np.load(os.path.join(root_path, filename) , allow_pickle=True)
+    #     print(data)
+    # te=[1,4,5]
+    # te.remove(1)
+    # te.remove(0)
+    # print(te)
 
+    npy_filepath = r"/workspace/MGFN./UCF_Train_ten_i3d/Arson053_x264_i3d.npy"
+    features = np.load(npy_filepath)
+    features = features.transpose(1, 0, 2)  # [10, T, F]
+    divided_features = []
+
+    divided_mag = []
+    for feature in features:
+        feature = process_feat(feature, 32)  # ucf(32,2048)
+        divided_features.append(feature)
+        divided_mag.append(np.linalg.norm(feature, axis=1)[:, np.newaxis])
+    divided_features = np.array(divided_features, dtype=np.float32)
+    divided_mag = np.array(divided_mag, dtype=np.float32)
+    divided_features = np.concatenate((divided_features, divided_mag), axis=2)
+
+    value = np.linalg.norm(feature, axis=1)
+    print(value)
 
     # assert  2< 1, print("asser error")
     # t = 0.235235435

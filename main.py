@@ -243,7 +243,7 @@ if __name__ == '__main__':
     parser.add_argument('--w', default=0.0010000000474974513, type=float, help='weight_decay')
     parser.add_argument('--modality', default='TWO', type=str, help='modality')
     parser.add_argument('--input_dim', default=512, type=int, help='input_dim')
-    parser.add_argument('--epoch', default=80, type=int, help='max_epoch')
+    parser.add_argument('--epoch', default=800, type=int, help='max_epoch')
     parser.add_argument('--train_batch_size', default=30, type=int, help='train_batch_size')
     parser.add_argument('--test_batch_size', default=1, type=int, help='test_batch_size')
     parser.add_argument('--optimize_iter', default=3, type=int, help='optimize_iter')
@@ -398,10 +398,13 @@ if __name__ == '__main__':
     # anomaly_train_dataset.check_captions_from_snippet_idxs(snippet_idxs)
 
     for epoch in range(0, args.epoch):
+        model.used_caption_in_inference = []
         # 训练之前初始化一下记忆空间
         if args.init_memory == "epoch":
             model.init_memory_space(anomaly_train_dataset, normal_train_dataset, args)
-
+        # if epoch == 5:
+        #     args.nk = True
+        #     model.nk = True
         train(epoch)
 
         # print captions saved in the memory space
@@ -409,14 +412,18 @@ if __name__ == '__main__':
             a_caption_memory, n_caption_memory = model.show_stored_snippet_ids()
             print("a_caption_memory: ")
             for snippet_id in a_caption_memory:
-                result = anomaly_train_dataset.show_caption(snippet_id)
-                print(f"{snippet_id}\t{result}")
+                video_name, caption = anomaly_train_dataset.show_caption(snippet_id)
+                print(f"{snippet_id}\t{video_name}\t{caption}")
             # print("n_caption_memory: ")
             # for snippet_id in n_caption_memory:
             #     result = normal_train_dataset.show_caption(snippet_id)
             #     print(snippet_id, result)
 
         auc, patient = test_abnormal(epoch, patient, args)
+        from collections import Counter
+
+        counter = Counter(model.used_caption_in_inference)
+        print(counter)
         aucs.append(auc)
         if args.nk:
             pass

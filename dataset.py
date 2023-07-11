@@ -115,10 +115,25 @@ class Normal_Loader(Dataset):
                 data = data[:, 34:]
             return data
 
+    def load_i3d_vf(self,npy_filepath):
+        features = np.load(npy_filepath)
+        features = features.transpose(1, 0, 2)  # [10, T, F]
+        divided_features = []
+        divided_mag = []
+        for feature in features:
+            feature = process_feat(feature, 32)  # ucf(32,2048)
+            divided_features.append(feature)
+            divided_mag.append(np.linalg.norm(feature, axis=1)[:, np.newaxis])
+        divided_features = np.array(divided_features, dtype=np.float32)
+        divided_mag = np.array(divided_mag, dtype=np.float32)
+        divided_features = np.concatenate((divided_features, divided_mag), axis=2)
+        return divided_features
+
     def __getitem__(self, idx):
         if self.is_train == 1:
             name = self.data_list[idx][:-1]
             feature = self.get_feature(name, normal_mode=True)
+            # feature_mag = np.linalg.norm(feature, axis=1)[:, np.newaxis]
             embedding = self.get_semantic_embedding(name)
             if len(embedding) > len(feature):
                 embedding = embedding[:len(feature)]
@@ -159,6 +174,21 @@ class Normal_Loader(Dataset):
             video_name = f"{video_name}-{idx}.avi"
             return data[video_name][0][0]
 
+    def compare_captions(self, snippet_ids):
+        embeddings = []
+        for snippet_id in snippet_ids:
+            video_id, idx = snippet_id.split("-")
+            video_name = self.data_list[int(video_id)][:-1]
+            video_name = video_name.split("/")[-1].replace(".mp4", "")
+            # caption_filepath = os.path.join(self.caption_root_path, video_name + ".npy")
+            # data = np.load(caption_filepath, allow_pickle=True).item()
+            embedding = self.get_semantic_embedding(video_name)[idx]
+            embeddings.append(embedding)
+        sims = []
+        for embedding in embeddings:
+            sim = torch.cosine_similarity(embedding, embeddings)
+            sims.append(sim)
+        print(sims)
 
     def get_snippet_feature(self, snippet_id):
         video_id, idx = snippet_id.split("-")
@@ -322,10 +352,10 @@ class Anomaly_Loader(Dataset):
         caption_filepath = os.path.join(self.caption_root_path, video_name + ".npy")
         data = np.load(caption_filepath, allow_pickle=True).item()
         if self.caption_type == "uio":
-            return data["orginal"][int(idx)]
+            return video_name, data["orginal"][int(idx)]
         elif self.caption_type == "swinbert":
             video_name = f"{video_name}-{idx}.avi"
-            return data[video_name][0][0]
+            return video_name, data[video_name][0][0]
 
     def get_snippet_feature(self, snippet_id):
         video_id, idx = snippet_id.split("-")
@@ -439,7 +469,7 @@ class ShanghaiTechDataset():
         features = np.array(features, dtype=np.float32)
 
         if self.transform is not None:
-            features = self.transform (features)
+            features = self.transform(features)
         if self.test_mode:
             return features
         else:
@@ -468,13 +498,107 @@ class ShanghaiTechDataset():
     def get_num_frames(self):
         return self.num_frame
 
+def process_feat(feat, length):
+    new_feat = np.zeros((length, feat.shape[1])).astype(np.float32) #UCF(32,2048)
+    r = np.linspace(0, len(feat), length+1, dtype=np.int) #(33,)
+    for i in range(length):
+        if r[i]!=r[i+1]:
+            new_feat[i,:] = np.mean(feat[r[i]:r[i+1],:], 0)
+        else:
+            new_feat[i,:] = feat[r[i],:]
+    return new_feat
+
+def show_video_captions():
+    """显示一个视频内所有的caption"""
+    video_name = "Arrest049_x264"
+    video_name = "Burglary043_x264"
+    video_name = "Burglary078_x264"
+    video_name = "Shoplifting040_x264"
+    video_name = "RoadAccidents047_x264"
+    caption_root_path = r"/workspace/datasets/ucf-crime/swinbert/captions/train/anomaly"
+    caption_filepath = os.path.join(caption_root_path, video_name + ".npy")
+    data = np.load(caption_filepath, allow_pickle=True).item()
+    # print(data)
+    for idx in range(32):
+        snippet_name = f"{video_name}-{idx}.avi"
+        print(f"{data[snippet_name][0][0]}\t{data[snippet_name][0][1]}")
+
+def show_caption_confidence():
+    caption_root_path = r"/workspace/datasets/ucf-crime/swinbert/captions/train/anomaly"
+    # 检查记忆的可行度，来筛选应该保留的记忆
+
+    # video_names = ["Arrest047_x264-1.avi","RoadAccidents051_x264-14.avi","RoadAccidents041_x264-9.avi","Abuse041_x264-24.avi","Vandalism008_x264-8.avi","Robbery104_x264-2.avi","RoadAccidents115_x264-26.avi"]
+    video_names = ["RoadAccidents047_x264-15.avi","Robbery128_x264-4.avi","Shoplifting040_x264-13.avi","Burglary078_x264-14.avi","Stealing071_x264-22.avi","Burglary083_x264-4.avi","Robbery144_x264-29.avi","Arrest049_x264-18.avi","Burglary043_x264-19.avi","Arson052_x264-21.avi"]
+
+    ids = [int(video_name.replace(".avi","").split("-")[1]) for video_name in  video_names]
+    video_names = [video_name.replace(".avi","").split("-")[0] for video_name in  video_names]
+
+    for video_name, idx in zip(video_names, ids):
+        video_name_raw = f"{video_name}-{idx}.avi"
+        confidence = np.load(os.path.join(caption_root_path, f"{video_name}.npy"), allow_pickle=True).item()[video_name_raw][0][1]
+        print(f"{video_name}: \t{confidence}")
+
+def show_caption_simlarity():
+    caption_embedding_root_path = rf"/workspace/datasets/ucf-crime/swinbert/caption_embeddings/train/anomaly"
+
+    # 分析记忆和被使用次数之间的关系
+    video_names = ["RoadAccidents047_x264-15.avi", "Robbery128_x264-4.avi", "Shoplifting040_x264-13.avi",
+                   "Burglary078_x264-14.avi", "Stealing071_x264-22.avi", "Burglary083_x264-4.avi",
+                   "Robbery144_x264-29.avi", "Arrest049_x264-18.avi", "Burglary043_x264-19.avi", "Arson052_x264-21.avi"]
+
+    ids = [int(video_name.replace(".avi", "").split("-")[1]) for video_name in video_names]
+    video_names = [video_name.replace(".avi", "").split("-")[0] for video_name in video_names]
+
+    # 检测记忆之间相似度的关系，筛选比较合适的保留
+    embeddings = []
+    # video_names = ["RoadAccidents100_x264", "Fighting032_x264", "Robbery129_x264", "RoadAccidents073_x264",
+    #                "Stealing075_x264", "Arrest049_x264", "Arrest002_x264", "Robbery135_x264"]
+    # ids = [11, 13, 27, 13, 20, 12, 24, 24]
+    #
+    # video_names = ["Assault036_x264", "Burglary050_x264", "RoadAccidents140_x264", "Shoplifting053_x264",
+    #                "Stealing093_x264", "RoadAccidents120_x264", "RoadAccidents051_x264"]
+    # ids = [29, 6, 25, 9, 27, 0, 28]
+    for video_name, idx in zip(video_names, ids):
+        # video_name = video_name.split("/")[-1].replace(".mp4", "")
+        # caption_filepath = os.path.join(self.caption_root_path, video_name + ".npy")
+        # data = np.load(caption_filepath, allow_pickle=True).item()
+        # embedding = self.get_semantic_embedding(video_name)[idx]
+        # name = name.split("/")[-1].replace(".mp4", "")
+        embedding = np.load(os.path.join(caption_embedding_root_path, f"{video_name}.npy"), allow_pickle=True)[idx]
+        embeddings.append(embedding)
+    sims = []
+    from sklearn.metrics.pairwise import cosine_similarity
+
+    for idx, embedding in enumerate(embeddings):
+        # sim = cosine_similarity(torch.Tensor(embedding), torch.stack(torch.Tensor(embeddings), dim=0))
+        if idx == 0:
+            sim = cosine_similarity([embedding], embeddings[1:])
+        elif idx == len(embeddings) - 1:
+            sim = cosine_similarity([embedding], embeddings[:-1])
+        else:
+            sim1 = cosine_similarity([embedding], embeddings[:idx])
+            sim2 = cosine_similarity([embedding], embeddings[idx + 1:])
+            sim = np.concatenate((sim1, sim2), axis=1)
+        print(sim)
+        sims.append(sim.mean())
+    print("sims:")
+    print(sims)
 
 if __name__ == '__main__':
     # loader2 = Normal_Loader(is_train=0)
-    loader2 = Anomaly_Loader(is_train=0)
-    for i in range(10):
-        print(loader2.__getitem__(i)[1])
-        model = SentenceTransformer('sentence-transformers/all-mpnet-base-v2')
+    # loader2 = Anomaly_Loader(is_train=0)
+    # video_name, result = loader2.show_caption("378-15")
+    # print(result)
+    import sys
+    # caption_idx = ["88-1","378-14","369-9","38-24","771-8","569-2","442-26"]
+
+    # show_video_captions()
+    show_caption_simlarity()
+
+
+    # for i in range(10):
+    #     print(loader2.__getitem__(i)[1])
+    #     model = SentenceTransformer('sentence-transformers/all-mpnet-base-v2')
 
     # print(len(loader2))
     # print(loader[1], loader2[1])

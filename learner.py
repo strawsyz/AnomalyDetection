@@ -47,6 +47,7 @@ class Learner(nn.Module):
         self.update_threshold = args.update_threshold
 
         self.caption_temp = args.caption_temp
+        self.used_caption_in_inference = []
         # self.tf = Transformer(args.input_dim, args.embedding_dim, args.n_layer, args.n_head, 0)
 
         if input_dim == 512:
@@ -121,6 +122,10 @@ class Learner(nn.Module):
             # nn.Dropout(drop_p),
             # nn.Linear(32, 1)
         )
+        dims = (64, 128, 1024)
+        channels = 2048
+        init_dim, *_, last_dim = dims
+        self.to_tokens = nn.Conv1d(channels, init_dim, kernel_size=3, stride=1, padding=1)
 
         # self.scaled_dot_product_attention_4_locate_anomaly = ScaledDotProductAttention(math.sqrt(32), 0)
         self.scaled_dot_product_attention_4_optimize_memory = ScaledDotProductAttention(math.sqrt(32), 0)
@@ -332,36 +337,52 @@ class Learner(nn.Module):
         a_memory = []
         a_caption_memory = []
         a_caption_embedding_memory = []
+        ce_temp_4_optimize = 0.1
 
         if len(self.a_memory) > self.threshold_a_memory_size:
             memory = torch.stack(self.a_memory)
             caption_embedding = torch.stack(self.a_caption_embedding)
             # feat_magnitudes = torch.norm(video_embeds, p=2, dim=2)
             # self.a_memory = self.cluster_memory(memory, self.min_a_memory_size)
-            saliency_scores = self._calcu_saliency_score_in_memory(memory)
+            saliency_scores = self._calcu_saliency_score_in_memory(memory, cal_method="mul")  # 和所有参数的相关性的平均值，
+            # saliency_scores = -saliency_scores_tmp  # 将显著度逆转
             saliency_scores_caption = self._calcu_saliency_score_in_memory(caption_embedding, cal_method="cos")
-            if self.caption_temp == -1:
+
+            if ce_temp_4_optimize == -1:
                 saliency_scores = saliency_scores_caption
-            elif self.caption_temp == 0:
+            elif ce_temp_4_optimize == 0:
                 pass
             else:
-                saliency_scores = (saliency_scores_caption * self.caption_temp + saliency_scores) / (
-                        1 + self.caption_temp)
-
-            # saliency_indexes = torch.argsort(saliency_scores)  # 选择相似度最小，特异度最大的记忆保存
-            saliency_indexes = torch.argsort(saliency_scores, descending=True)  # 选择相似度最大，特异度最小的模型保存
+                saliency_scores = (saliency_scores_caption * ce_temp_4_optimize + saliency_scores) / (
+                        1 + ce_temp_4_optimize)
+            # 选择需要保存的memory，将memory保存然后观察结果
+            saliency_indexes = torch.argsort(saliency_scores)  # 选择相似度最小，特异度最大的记忆保存
+            # saliency_indexes = torch.argsort(saliency_scores, descending=True)  # 选择相似度最大，特异度最小的模型保存
             indexes = saliency_indexes[
                       self.optimize_topk:self.min_a_memory_size + self.optimize_topk]  # 挑选相似度最小的几个，让记忆的内容尽可能不相同
-            print(saliency_scores)
+            print("saliency_scores", saliency_scores)
             for index in indexes:
                 a_memory.append(self.a_memory[index])
                 a_caption_memory.append(self.a_caption_memory[index])
                 a_caption_embedding_memory.append(self.a_caption_embedding[index])
+
+            # if ce_temp_4_optimize == -1:
+            #     saliency_scores = saliency_scores_caption
+            # elif ce_temp_4_optimize == 0:
+            #     pass
+            # else:
+            #     saliency_scores = (saliency_scores_caption * ce_temp_4_optimize + saliency_scores) / (
+            #             1 + ce_temp_4_optimize)
+
             if self.update_threshold:
                 # print(saliency_scores[index])
                 # saliency_scores.topk(4, largest=False).values.mean()
                 # saliency_scores = self._calcu_saliency_score_in_memory(torch.stack(a_memory))
-                threshold_ = saliency_scores.mean()
+                # 基于更新后的空间，计算一个相似度
+                saliency_scores = self._calcu_saliency_score_in_memory(torch.stack(a_caption_embedding_memory),
+                                                                       cal_method="cos")
+                threshold_ = saliency_scores.max()
+                # threshold_ = saliency_scores.mean()
                 # threshold_ = saliency_scores[index]
                 # threshold_ = saliency_scores.topk(max(1, int(saliency_scores.shape[-1] * 0.5)), largest=True).values.mean()
                 # self.threshold_a_caption_score = min(self.threshold_a_caption_score, threshold_)
@@ -376,6 +397,10 @@ class Learner(nn.Module):
             self.a_memory = a_memory
             self.a_caption_memory = a_caption_memory
             self.a_caption_embedding = a_caption_embedding_memory
+
+        # self.optimize_ms_based_ce()
+        print("threshold for a: ", self.threshold_a_caption_score)
+        # print("threshold for n: ", self.threshold_n_caption_score)
 
         # optimize normal memory space
         # n_memory = []
@@ -408,9 +433,24 @@ class Learner(nn.Module):
         #     print(f" {len(self.n_memory)} -> {len(indexes)}")
         #     self.n_memory = n_memory
         #     self.n_caption_memory = n_caption_memory
+    def optimize_ms_based_ce(self):
+        # 基于ce，再进一步改善ms的内容
+        memory = torch.stack(self.a_memory)
+        a_caption_memory = torch.stack(self.a_caption_embedding)
+        indexes = []
+        for idx, ce in enumerate(a_caption_memory):
+            saliency_score = torch.cosine_similarity(ce, a_caption_memory, dim=1)
+            # saliency_score = (saliency_score + 1) / 2  # 帮助呢个所有saliency score只有正数, 如果本身就只有正数的话，会使得正数之间距离变为1/2
+            # saliency_score = saliency_score.max()
+            if (saliency_score<0).sum() == 0:
+                indexes.append(idx)
+                # todo 如果和所有的记忆都是正数，就删除。。
+        for index in indexes:
+            a_memory.append(self.a_memory[index])
+            a_caption_memory.append(self.a_caption_memory[index])
+            a_caption_embedding_memory.append(self.a_caption_embedding[index])
 
-        print("threshold for a: ", self.threshold_a_caption_score)
-        print("threshold for n: ", self.threshold_n_caption_score)
+
 
     def show_stored_snippet_ids(self):
         return self.a_caption_memory, self.n_caption_memory
@@ -471,9 +511,15 @@ class Learner(nn.Module):
         # 计算caption的相似度
         caption_similarity_score = Variable(torch.cosine_similarity(caption_embedding_memory_, caption_embedding),
                                             requires_grad=True)
+        #  计算各个参数被使用频率，根据使用频率决定使用的caption
+        if not self.training:
+            idx = torch.argmax(caption_similarity_score)
+            self.used_caption_in_inference.append(self.a_caption_memory[idx])
+            # print("used caption: ", self.a_caption_memory[idx])
+
         # 找到最相似的memory的距离，作为这个caption的特异性,这个数字越小，说明和这个caption相似的memory越少，也说明越有保存的价值
         caption_score_2 = self.max_score(caption_similarity_score, top_k=self.topk_score)
-
+        # print(f"caption_similarity_score: {caption_score_2}, feature_similarity_score: {feature_similarity_score}")
         if self.caption_temp == -1:
             return caption_score_2
         elif self.caption_temp == 0:
@@ -566,11 +612,11 @@ class Learner(nn.Module):
                 # print(index_a)
 
                 # 获得异常的特征量, 一个视频中的异常的特征量
-                # batch_anomaly_feature = x[i * 2 * 32: i * 2 * 32 + 32]
-                # batch_normal_feature = x[i * 2 * 32 + 32: 2 * i * 32 + 64]
+                batch_anomaly_feature = x[i * 2 * 32: i * 2 * 32 + 32]
+                batch_normal_feature = x[i * 2 * 32 + 32: 2 * i * 32 + 64]
                 # 使用world embedding作为视频的特征量
-                batch_anomaly_feature = caption_embeddings[i * 2 * 32: i * 2 * 32 + 32]
-                batch_normal_feature = caption_embeddings[i * 2 * 32 + 32: 2 * i * 32 + 64]
+                batch_anomaly_caption = caption_embeddings[i * 2 * 32: i * 2 * 32 + 32]
+                batch_normal_caption = caption_embeddings[i * 2 * 32 + 32: 2 * i * 32 + 64]
                 # saliency_scores = torch.cosine_similarity(batch_anomaly_feature, batch_anomaly_feature, dim=1).abs()
                 # todo 这种相似度计算方式是否合适
                 # saliency_scores = torch.cosine_similarity(batch_anomaly_feature, batch_anomaly_feature.T, dim=1)
@@ -580,15 +626,22 @@ class Learner(nn.Module):
                 normal_scores = []
                 length = 5
                 num_snippets = len(batch_anomaly_feature)
-                for idx, _memory in enumerate(batch_anomaly_feature):
-                    start = max(idx - length // 2, 0)
-                    end = min(start + length, num_snippets)
-                    # 与正常的片段越是相似，就越是normal
-                    normal_score = torch.cosine_similarity(_memory, batch_normal_feature, dim=1).mean()
-                    # 在异常视频中，一个片段和它附近的片段的变化越小。相似度就越大，是异常的可能性就越小
-                    normal_score = normal_score + torch.cosine_similarity(_memory, batch_normal_feature[start:end],
-                                                                            dim=1).mean()
+                for idx, (anomaly_vf, anomaly_ce) in enumerate(zip(batch_anomaly_feature, batch_anomaly_caption)):
+                    if idx in [0, num_snippets - 1]:
+                        # 跳过开头和结尾的snippet
+                        normal_score = torch.from_numpy(np.array(1000)).cuda()
+                    else:
+                        start = max(idx - length // 2, 0)
+                        end = min(start + length, num_snippets)
+                        # 与正常的片段越是相似，就越是normal
+                        normal_score = torch.cosine_similarity(anomaly_ce, batch_normal_caption, dim=1).mean()
+                        normal_score = normal_score + torch.cosine_similarity(anomaly_vf, batch_normal_feature,
+                                                                              dim=1).mean()
+                        # 在异常视频中，一个片段和它附近的片段的变化越小。相似度就越大，是异常的可能性就越小
+                        # normal_score = normal_score + torch.cosine_similarity(anomaly_vf, batch_anomaly_feature[start:end],
+                        #                                                       dim=1).mean()
                     normal_scores.append(normal_score)
+                # print(normal_scores)
                 normal_scores = torch.stack(normal_scores)
 
                 # saliency_scores = torch.nn.functional.softmax(saliency_scores)  # softmax
@@ -597,6 +650,11 @@ class Learner(nn.Module):
                 index_a = torch.argsort(normal_scores)[:self.a_topk]  # 跳过第一个特异值，也可以考虑做一个平滑
                 # saliency_score = saliency_score.mean()  # 也可以换成median玩玩，但结果不好
                 # saliency_scores.append(saliency_score)
+
+                # for idx in index_a:
+                #     if idx in [0, 31]:  # 很可能出现一些log，这些log很容易被误认为异常
+                #         continue
+                #     else:
 
                 indexes = i * 2 * 32 + index_a
                 # features = x[indexes]
@@ -744,7 +802,7 @@ class Learner(nn.Module):
 
         # feat_magnitudes = torch.norm(x, p=2, dim=2)  # 可以用于CLIP提取的参数
         # print(feat_magnitudes.shape)  # 10, 28  # 640, 28
-
+        # x = self.to_tokens(x)
         batch_size = int(x.shape[0] / 64)
         feature_dim = x.shape[1]
 
@@ -779,7 +837,7 @@ class Learner(nn.Module):
         if self.nk:
             if self.training:
                 a_snippet_ids = self.add_anomaly_memory(x, video_ids, caption_embeddings)
-            outputs = [0 for i in range(len(x))]
+            anomaly_scores = [0 for i in range(len(x))]
 
             indexes = np.arange(len(x))
             # np.random.shuffle(indexes)  # 防止一个视频一个视频的放入数据，导致初始空间偏向第一个视频，感觉没什么用
@@ -806,21 +864,29 @@ class Learner(nn.Module):
                     else:
                         anomaly_score = self.calculate_anomaly_score(feature, gt, update=False,
                                                                      caption_embedding=caption_embedding)
-                outputs[index] = anomaly_score
+                anomaly_scores[index] = anomaly_score
             # outputs = torch.stack(outputs, dim=0) * x.mean(dim=1)  # 0.8339315091549631
             # outputs = torch.stack(outputs, dim=0) + x.mean(dim=1) # 0.8173835234501754
-            outputs = torch.stack(outputs, dim=0)
-            outputs = torch.sigmoid(outputs)
+            anomaly_scores = torch.stack(anomaly_scores, dim=0)
+            anomaly_scores = torch.sigmoid(anomaly_scores)
+
+            # calculate anomaly scores based on results from the linear layers
+            anomaly_scores = anomaly_scores + torch.sigmoid(x.mean(dim=1))
+            # x = F.linear(x, vars[4], vars[5])
+            # x = torch.squeeze(x)
+            # anomaly_scores = anomaly_scores + torch.sigmoid(x.min(dim=1).values)
+            # anomaly_scores = anomaly_scores + torch.sigmoid(x)
+
             if self.training:
-                return outputs, a_snippet_ids
+                return anomaly_scores, a_snippet_ids
             else:
-                return outputs
+                return anomaly_scores
             # return torch.softmax(outputs, dim=0)  # 不应该使用softmax.因为本来就有1920个snippet，这会导致分数都变得很低，除非给每一个视频进行softmax
-            return torch.sigmoid(outputs)
-            return torch.sigmoid(outputs + output_from_caption_embedding)
-            outputs = torch.sigmoid(outputs)
-            outputs = (outputs + torch.sigmoid(output_from_caption_embedding)) / 2
-            return outputs
+            return torch.sigmoid(anomaly_scores)
+            return torch.sigmoid(anomaly_scores + output_from_caption_embedding)
+            anomaly_scores = torch.sigmoid(anomaly_scores)
+            anomaly_scores = (anomaly_scores + torch.sigmoid(output_from_caption_embedding)) / 2
+            return anomaly_scores
 
             # outputs = torch.unsqueeze(outputs, dim=1)
             # x = x.mean(dim=1)
@@ -837,14 +903,14 @@ class Learner(nn.Module):
             # x = torch.sigmoid(x)
             # a_attn.mean(dim=2) + a_output.mean(dim=2)
 
-            outputs = x.mean(dim=1)
+            anomaly_scores = x.mean(dim=1)
             # outputs += output_from_caption_embedding
-            outputs = F.sigmoid(outputs)
-            outputs = outputs  # + torch.sigmoid(output_from_caption_embedding)
+            anomaly_scores = F.sigmoid(anomaly_scores)
+            anomaly_scores = anomaly_scores  # + torch.sigmoid(output_from_caption_embedding)
             if self.training:
-                return outputs, []
+                return anomaly_scores, []
             else:
-                return outputs
+                return anomaly_scores
         # inputs = torch.clone(x)
         # x = F.relu(x)  # 改善了0.02
         # x = F.dropout(x, self.drop_p, training=self.training)  # 改善了不少  #0.5191871161161531
