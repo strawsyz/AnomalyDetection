@@ -81,22 +81,27 @@ if __name__ == '__main__':
     # te.remove(0)
     # print(te)
 
-    npy_filepath = r"/workspace/MGFN./UCF_Train_ten_i3d/Arson053_x264_i3d.npy"
+    # npy_filepath = r"/workspace/MGFN./UCF_Train_ten_i3d/Arson053_x264_i3d.npy"
+    npy_filepath = r"/workspace/datasets/XD-Violence/i3d-features/RGB/Spectre.2015__#02-11-01_02-11-29_label_B2-0-0__4.npy"
+
     features = np.load(npy_filepath)
+    print(features.shape)
+
     features = features.transpose(1, 0, 2)  # [10, T, F]
     divided_features = []
 
-    divided_mag = []
-    for feature in features:
-        feature = process_feat(feature, 32)  # ucf(32,2048)
-        divided_features.append(feature)
-        divided_mag.append(np.linalg.norm(feature, axis=1)[:, np.newaxis])
-    divided_features = np.array(divided_features, dtype=np.float32)
-    divided_mag = np.array(divided_mag, dtype=np.float32)
-    divided_features = np.concatenate((divided_features, divided_mag), axis=2)
-
-    value = np.linalg.norm(feature, axis=1)
-    print(value)
+    #
+    # divided_mag = []
+    # for feature in features:
+    #     feature = process_feat(feature, 32)  # ucf(32,2048)
+    #     divided_features.append(feature)
+    #     divided_mag.append(np.linalg.norm(feature, axis=1)[:, np.newaxis])
+    # divided_features = np.array(divided_features, dtype=np.float32)
+    # divided_mag = np.array(divided_mag, dtype=np.float32)
+    # divided_features = np.concatenate((divided_features, divided_mag), axis=2)
+    #
+    # value = np.linalg.norm(feature, axis=1)
+    # print(value)
 
     # assert  2< 1, print("asser error")
     # t = 0.235235435
