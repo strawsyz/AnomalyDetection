@@ -122,10 +122,6 @@ class Learner(nn.Module):
             # nn.Dropout(drop_p),
             # nn.Linear(32, 1)
         )
-        dims = (64, 128, 1024)
-        channels = 2048
-        init_dim, *_, last_dim = dims
-        self.to_tokens = nn.Conv1d(channels, init_dim, kernel_size=3, stride=1, padding=1)
 
         # self.scaled_dot_product_attention_4_locate_anomaly = ScaledDotProductAttention(math.sqrt(32), 0)
         self.scaled_dot_product_attention_4_optimize_memory = ScaledDotProductAttention(math.sqrt(32), 0)
@@ -344,17 +340,18 @@ class Learner(nn.Module):
             caption_embedding = torch.stack(self.a_caption_embedding)
             # feat_magnitudes = torch.norm(video_embeds, p=2, dim=2)
             # self.a_memory = self.cluster_memory(memory, self.min_a_memory_size)
-            saliency_scores = self._calcu_saliency_score_in_memory(memory, cal_method="mul")  # 和所有参数的相关性的平均值，
+            # saliency_scores = self._calcu_saliency_score_in_memory(memory, cal_method="mul")  # 和所有参数的相关性的平均值，
             # saliency_scores = -saliency_scores_tmp  # 将显著度逆转
             saliency_scores_caption = self._calcu_saliency_score_in_memory(caption_embedding, cal_method="cos")
-
-            if ce_temp_4_optimize == -1:
-                saliency_scores = saliency_scores_caption
-            elif ce_temp_4_optimize == 0:
-                pass
-            else:
-                saliency_scores = (saliency_scores_caption * ce_temp_4_optimize + saliency_scores) / (
-                        1 + ce_temp_4_optimize)
+            saliency_scores = saliency_scores_caption
+            #
+            # if ce_temp_4_optimize == -1:
+            #     saliency_scores = saliency_scores_caption
+            # elif ce_temp_4_optimize == 0:
+            #     pass
+            # else:
+            #     saliency_scores = (saliency_scores_caption * ce_temp_4_optimize + saliency_scores) / (
+            #             1 + ce_temp_4_optimize)
             # 选择需要保存的memory，将memory保存然后观察结果
             saliency_indexes = torch.argsort(saliency_scores)  # 选择相似度最小，特异度最大的记忆保存
             # saliency_indexes = torch.argsort(saliency_scores, descending=True)  # 选择相似度最大，特异度最小的模型保存

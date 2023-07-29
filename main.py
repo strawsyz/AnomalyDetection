@@ -175,7 +175,8 @@ def test_abnormal(epoch, patient, args):
                 # print(video_names, video_names2)
                 plt.plot(gt_list3, label='gt')
                 plt.plot(score_list3, label='prediction')
-
+                # np.save(fr"feature-prediction-epoch{epoch}", score_list)
+                # np.save(fr"gt-epoch", gt_list)
                 # 　画分界线
                 plt.axvline(len(score_list), 1.0, 0.0, color='green')
                 plt.text(0, 0.5, anomaly_video_name)
@@ -243,7 +244,7 @@ if __name__ == '__main__':
     parser.add_argument('--w', default=0.0010000000474974513, type=float, help='weight_decay')
     parser.add_argument('--modality', default='TWO', type=str, help='modality')
     parser.add_argument('--input_dim', default=512, type=int, help='input_dim')
-    parser.add_argument('--epoch', default=800, type=int, help='max_epoch')
+    parser.add_argument('--epoch', default=80, type=int, help='max_epoch')
     parser.add_argument('--train_batch_size', default=30, type=int, help='train_batch_size')
     parser.add_argument('--test_batch_size', default=1, type=int, help='test_batch_size')
     parser.add_argument('--optimize_iter', default=3, type=int, help='optimize_iter')
