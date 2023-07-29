@@ -37,9 +37,11 @@ class Normal_Loader(Dataset):
             self.caption_embedding_root_path = rf"/workspace/datasets/ucf-crime/swinbert/caption_embeddings/{split_tmp}/{mode_tmp}"
             self.caption_root_path = rf"/workspace/datasets/ucf-crime/swinbert/captions/train/normal"
 
-        self.path = self.get_dataset_root_path(path, split_tmp, mode_tmp)
+        self.path = get_dataset_root_path(self.feature_name, path, split_tmp, mode_tmp)
 
         if self.is_train == 1:
+            if self.feature_name == "new_i3d":
+                pass
             data_list = os.path.join(path, 'train_normal.txt')
             with open(data_list, 'r') as f:
                 self.data_list = f.readlines()
@@ -49,30 +51,6 @@ class Normal_Loader(Dataset):
                 self.data_list = f.readlines()
         # random.shuffle(self.data_list)
         # self.data_list = self.data_list[:-10]
-
-    def get_dataset_root_path(self, path, split_, mode_):
-        if self.feature_name in ["i3d", "clip", "i3d_clip"]:
-            return path
-        elif self.feature_name == "uio_opt_region":
-            root_path = "/workspace/datasets/ucf-crime/uio/sorted5"
-        elif self.feature_name == "uio_fixed_region":
-            root_path = "/workspace/datasets/ucf-crime/uio/sorted6"
-        # elif self.feature_name == "uio_caption_vqa1":
-        #     if self.is_train:  # 可能需要重建确认一下数据的形式  input_dim:2048
-        #         root_path = "/workspace/datasets/ucf-crime/uio/32clip"
-        #     else:
-        #         root_path = "/workspace/datasets/ucf-crime/uio/24b"
-        elif self.feature_name in ["uio_caption_vqa1_68", "uio_caption_34", "uio_vqa1_34"]:
-            root_path = "/workspace/datasets/ucf-crime/uio/sorted"
-        elif self.feature_name == "vqas_170":
-            root_path = "/workspace/datasets/ucf-crime/uio/sorted2"
-        elif self.feature_name in ["uio_caption", "uio_vqa1", "uio_caption_vqa1"]:  # 2048
-            root_path = "/workspace/datasets/ucf-crime/uio/sorted3"
-        elif self.feature_name == "uio_caption_vqa1_1280":  # 640
-            root_path = "/workspace/datasets/ucf-crime/uio/sorted4"
-        path = os.path.join(root_path, split_, mode_)
-
-        return path
 
     def __len__(self):
         return len(self.data_list)
@@ -93,6 +71,14 @@ class Normal_Loader(Dataset):
                 return flow_npy
             else:
                 return concat_npy
+        elif self.feature_name == "new_i3d":
+            name = name.replace(".mp4","")
+            name = name.replace("Normal_Videos_event/","")
+            name = name.replace("Normal_Videos","Normal_Videos_")
+            features_filepath = os.path.join(self.path, name + '_i3d.npy')
+            features = np.load(features_filepath, allow_pickle=True)
+            features = np.array(features, dtype=np.float32)
+            return features
         elif self.feature_name == "clip":
             feature = get_clip_feature(name, not self.is_train, normal_mode, mix=not self.is_train)
             return feature
@@ -115,7 +101,7 @@ class Normal_Loader(Dataset):
                 data = data[:, 34:]
             return data
 
-    def load_i3d_vf(self,npy_filepath):
+    def load_i3d_vf(self, npy_filepath):
         features = np.load(npy_filepath)
         features = features.transpose(1, 0, 2)  # [10, T, F]
         divided_features = []
@@ -133,7 +119,9 @@ class Normal_Loader(Dataset):
         if self.is_train == 1:
             name = self.data_list[idx][:-1]
             feature = self.get_feature(name, normal_mode=True)
-            # feature_mag = np.linalg.norm(feature, axis=1)[:, np.newaxis]
+            if self.feature_name == "new_i3d":
+                feature_mag = np.linalg.norm(feature, axis=1)[:, np.newaxis]
+                feature = np.concatenate((feature, feature_mag), axis=2)
             embedding = self.get_semantic_embedding(name)
             if len(embedding) > len(feature):
                 embedding = embedding[:len(feature)]
@@ -208,6 +196,37 @@ class Normal_Loader(Dataset):
         feature = features[idx]
         return feature, caption, embedding
 
+def get_dataset_root_path(feature_name, path, split_, mode_):
+    if feature_name == "new_i3d":
+        if split_ =="test":
+            path =r"/workspace/MGFN./UCF_Train_ten_i3d"
+        elif split_ =="train":
+            path = r"/workspace/MGFN./UCF_Test_ten_i3d"
+        return path
+
+    if feature_name in ["i3d", "clip", "i3d_clip"]:
+        return path
+    elif feature_name == "uio_opt_region":
+        root_path = "/workspace/datasets/ucf-crime/uio/sorted5"
+    elif feature_name == "uio_fixed_region":
+        root_path = "/workspace/datasets/ucf-crime/uio/sorted6"
+    # elif self.feature_name == "uio_caption_vqa1":
+    #     if self.is_train:  # 可能需要重建确认一下数据的形式  input_dim:2048
+    #         root_path = "/workspace/datasets/ucf-crime/uio/32clip"
+    #     else:
+    #         root_path = "/workspace/datasets/ucf-crime/uio/24b"
+    elif feature_name in ["uio_caption_vqa1_68", "uio_caption_34", "uio_vqa1_34"]:
+        root_path = "/workspace/datasets/ucf-crime/uio/sorted"
+    elif feature_name == "vqas_170":
+        root_path = "/workspace/datasets/ucf-crime/uio/sorted2"
+    elif feature_name in ["uio_caption", "uio_vqa1", "uio_caption_vqa1"]:  # 2048
+        root_path = "/workspace/datasets/ucf-crime/uio/sorted3"
+    elif feature_name == "uio_caption_vqa1_1280":  # 640
+        root_path = "/workspace/datasets/ucf-crime/uio/sorted4"
+    path = os.path.join(root_path, split_, mode_)
+
+    return path
+
 
 class Anomaly_Loader(Dataset):
     """
@@ -232,7 +251,7 @@ class Anomaly_Loader(Dataset):
             self.caption_embedding_root_path = rf"/workspace/datasets/ucf-crime/swinbert/caption_embeddings/{split_tmp}/{mode_tmp}"
             self.caption_root_path = rf"/workspace/datasets/ucf-crime/swinbert/captions/train/anomaly"
 
-        self.path = self.get_dataset_root_path(path, split_tmp, mode_tmp)
+        self.path = get_dataset_root_path(self.feature_name, path, split_tmp, mode_tmp)
 
         if self.is_train == 1:
             data_list = os.path.join(path, 'train_anomaly.txt')
@@ -248,28 +267,28 @@ class Anomaly_Loader(Dataset):
         embedding = np.load(os.path.join(self.caption_embedding_root_path, f"{name}.npy"), allow_pickle=True)
         return embedding
 
-    def get_dataset_root_path(self, path, split_, mode_):
-        if self.feature_name in ["i3d", "clip", "i3d_clip"]:
-            return path
-        elif self.feature_name == "uio_opt_region":
-            root_path = "/workspace/datasets/ucf-crime/uio/sorted5"
-        elif self.feature_name == "uio_fixed_region":
-            root_path = "/workspace/datasets/ucf-crime/uio/sorted6"
-        # elif self.feature_name == "uio_caption_vqa1":
-        #     if self.is_train:  # 可能需要重建确认一下数据的形式  input_dim:2048
-        #         root_path = "/workspace/datasets/ucf-crime/uio/32clip"
-        #     else:
-        #         root_path = "/workspace/datasets/ucf-crime/uio/24b"
-        elif self.feature_name in ["uio_caption_vqa1_68", "uio_caption_34", "uio_vqa1_34"]:
-            root_path = "/workspace/datasets/ucf-crime/uio/sorted"
-        elif self.feature_name == "vqas_170":
-            root_path = "/workspace/datasets/ucf-crime/uio/sorted2"
-        elif self.feature_name in ["uio_caption", "uio_vqa1", "uio_caption_vqa1"]:  # 2048
-            root_path = "/workspace/datasets/ucf-crime/uio/sorted3"
-        elif self.feature_name == "uio_caption_vqa1_1280":  # 640
-            root_path = "/workspace/datasets/ucf-crime/uio/sorted4"
-        path = os.path.join(root_path, split_, mode_)
-        return path
+    # def get_dataset_root_path(self, path, split_, mode_):
+    #     if self.feature_name in ["i3d", "clip", "i3d_clip"]:
+    #         return path
+    #     elif self.feature_name == "uio_opt_region":
+    #         root_path = "/workspace/datasets/ucf-crime/uio/sorted5"
+    #     elif self.feature_name == "uio_fixed_region":
+    #         root_path = "/workspace/datasets/ucf-crime/uio/sorted6"
+    #     # elif self.feature_name == "uio_caption_vqa1":
+    #     #     if self.is_train:  # 可能需要重建确认一下数据的形式  input_dim:2048
+    #     #         root_path = "/workspace/datasets/ucf-crime/uio/32clip"
+    #     #     else:
+    #     #         root_path = "/workspace/datasets/ucf-crime/uio/24b"
+    #     elif self.feature_name in ["uio_caption_vqa1_68", "uio_caption_34", "uio_vqa1_34"]:
+    #         root_path = "/workspace/datasets/ucf-crime/uio/sorted"
+    #     elif self.feature_name == "vqas_170":
+    #         root_path = "/workspace/datasets/ucf-crime/uio/sorted2"
+    #     elif self.feature_name in ["uio_caption", "uio_vqa1", "uio_caption_vqa1"]:  # 2048
+    #         root_path = "/workspace/datasets/ucf-crime/uio/sorted3"
+    #     elif self.feature_name == "uio_caption_vqa1_1280":  # 640
+    #         root_path = "/workspace/datasets/ucf-crime/uio/sorted4"
+    #     path = os.path.join(root_path, split_, mode_)
+    #     return path
 
     def __len__(self):
         return len(self.data_list)
@@ -285,6 +304,13 @@ class Anomaly_Loader(Dataset):
                 return flow_npy
             else:
                 return concat_npy
+        elif self.feature_name == "new_i3d":
+            name = name.replace(".mp4", "")
+            name = name.replace("Normal_Videos_event/","")
+            features_filepath = os.path.join(self.path, name + '.npy')
+            features = np.load(features_filepath, allow_pickle=True)
+            features = np.array(features, dtype=np.float32)
+            return features
         elif self.feature_name == "clip":
             feature = get_clip_feature(name, not self.is_train, normal_mode, mix=not self.is_train)
             return feature
@@ -314,6 +340,9 @@ class Anomaly_Loader(Dataset):
             name = self.data_list[idx][:-1]
 
             feature = self.get_feature(name)
+            if self.feature_name == "new_i3d":
+                feature_mag = np.linalg.norm(feature, axis=1)[:, np.newaxis]
+                feature = np.concatenate((feature, feature_mag), axis=2)
             embedding = self.get_semantic_embedding(name)
             if len(embedding) > len(feature):
                 embedding = embedding[:len(feature)]
@@ -498,15 +527,17 @@ class ShanghaiTechDataset():
     def get_num_frames(self):
         return self.num_frame
 
+
 def process_feat(feat, length):
-    new_feat = np.zeros((length, feat.shape[1])).astype(np.float32) #UCF(32,2048)
-    r = np.linspace(0, len(feat), length+1, dtype=np.int) #(33,)
+    new_feat = np.zeros((length, feat.shape[1])).astype(np.float32)  # UCF(32,2048)
+    r = np.linspace(0, len(feat), length + 1, dtype=np.int)  # (33,)
     for i in range(length):
-        if r[i]!=r[i+1]:
-            new_feat[i,:] = np.mean(feat[r[i]:r[i+1],:], 0)
+        if r[i] != r[i + 1]:
+            new_feat[i, :] = np.mean(feat[r[i]:r[i + 1], :], 0)
         else:
-            new_feat[i,:] = feat[r[i],:]
+            new_feat[i, :] = feat[r[i], :]
     return new_feat
+
 
 def show_video_captions():
     """显示一个视频内所有的caption"""
@@ -523,20 +554,25 @@ def show_video_captions():
         snippet_name = f"{video_name}-{idx}.avi"
         print(f"{data[snippet_name][0][0]}\t{data[snippet_name][0][1]}")
 
+
 def show_caption_confidence():
     caption_root_path = r"/workspace/datasets/ucf-crime/swinbert/captions/train/anomaly"
     # 检查记忆的可行度，来筛选应该保留的记忆
 
     # video_names = ["Arrest047_x264-1.avi","RoadAccidents051_x264-14.avi","RoadAccidents041_x264-9.avi","Abuse041_x264-24.avi","Vandalism008_x264-8.avi","Robbery104_x264-2.avi","RoadAccidents115_x264-26.avi"]
-    video_names = ["RoadAccidents047_x264-15.avi","Robbery128_x264-4.avi","Shoplifting040_x264-13.avi","Burglary078_x264-14.avi","Stealing071_x264-22.avi","Burglary083_x264-4.avi","Robbery144_x264-29.avi","Arrest049_x264-18.avi","Burglary043_x264-19.avi","Arson052_x264-21.avi"]
+    video_names = ["RoadAccidents047_x264-15.avi", "Robbery128_x264-4.avi", "Shoplifting040_x264-13.avi",
+                   "Burglary078_x264-14.avi", "Stealing071_x264-22.avi", "Burglary083_x264-4.avi",
+                   "Robbery144_x264-29.avi", "Arrest049_x264-18.avi", "Burglary043_x264-19.avi", "Arson052_x264-21.avi"]
 
-    ids = [int(video_name.replace(".avi","").split("-")[1]) for video_name in  video_names]
-    video_names = [video_name.replace(".avi","").split("-")[0] for video_name in  video_names]
+    ids = [int(video_name.replace(".avi", "").split("-")[1]) for video_name in video_names]
+    video_names = [video_name.replace(".avi", "").split("-")[0] for video_name in video_names]
 
     for video_name, idx in zip(video_names, ids):
         video_name_raw = f"{video_name}-{idx}.avi"
-        confidence = np.load(os.path.join(caption_root_path, f"{video_name}.npy"), allow_pickle=True).item()[video_name_raw][0][1]
+        confidence = \
+        np.load(os.path.join(caption_root_path, f"{video_name}.npy"), allow_pickle=True).item()[video_name_raw][0][1]
         print(f"{video_name}: \t{confidence}")
+
 
 def show_caption_simlarity():
     caption_embedding_root_path = rf"/workspace/datasets/ucf-crime/swinbert/caption_embeddings/train/anomaly"
@@ -584,17 +620,18 @@ def show_caption_simlarity():
     print("sims:")
     print(sims)
 
+
 if __name__ == '__main__':
     # loader2 = Normal_Loader(is_train=0)
     # loader2 = Anomaly_Loader(is_train=0)
     # video_name, result = loader2.show_caption("378-15")
     # print(result)
     import sys
+
     # caption_idx = ["88-1","378-14","369-9","38-24","771-8","569-2","442-26"]
 
     # show_video_captions()
     show_caption_simlarity()
-
 
     # for i in range(10):
     #     print(loader2.__getitem__(i)[1])

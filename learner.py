@@ -395,7 +395,8 @@ class Learner(nn.Module):
             self.a_caption_memory = a_caption_memory
             self.a_caption_embedding = a_caption_embedding_memory
 
-        # self.optimize_ms_based_ce()
+            # 进一步筛选掉。和所有基于正向相似的caption
+            # self.optimize_ms_based_ce()
         print("threshold for a: ", self.threshold_a_caption_score)
         # print("threshold for n: ", self.threshold_n_caption_score)
 
@@ -432,6 +433,7 @@ class Learner(nn.Module):
         #     self.n_caption_memory = n_caption_memory
     def optimize_ms_based_ce(self):
         # 基于ce，再进一步改善ms的内容
+
         memory = torch.stack(self.a_memory)
         a_caption_memory = torch.stack(self.a_caption_embedding)
         indexes = []
@@ -439,14 +441,20 @@ class Learner(nn.Module):
             saliency_score = torch.cosine_similarity(ce, a_caption_memory, dim=1)
             # saliency_score = (saliency_score + 1) / 2  # 帮助呢个所有saliency score只有正数, 如果本身就只有正数的话，会使得正数之间距离变为1/2
             # saliency_score = saliency_score.max()
-            if (saliency_score<0).sum() == 0:
+            # 如果和所有的记忆都是正数，就删除, 否则就保存记忆
+            if (saliency_score<0).sum() > 0:
                 indexes.append(idx)
-                # todo 如果和所有的记忆都是正数，就删除。。
+        a_memory = []
+        a_caption_memory = []
+        a_caption_embedding_memory = []
         for index in indexes:
             a_memory.append(self.a_memory[index])
             a_caption_memory.append(self.a_caption_memory[index])
             a_caption_embedding_memory.append(self.a_caption_embedding[index])
 
+        self.a_memory = a_memory
+        self.a_caption_memory = a_caption_memory
+        self.a_caption_embedding = a_caption_embedding_memory
 
 
     def show_stored_snippet_ids(self):
